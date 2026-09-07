@@ -65,7 +65,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
+  /* 15px de base: a 14px os rotulos secundarios caiam para 10-11px, abaixo do
+     confortavel para leitura continua. O piso do texto de apoio e 12px. */
+  font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
