@@ -9,6 +9,7 @@ import Queue from '../features/queue/Queue.jsx';
 import Schedule from '../features/schedule/Schedule.jsx';
 import Calendar from '../features/calendar/Calendar.jsx';
 import Library from '../features/library/Library.jsx';
+import Editor from '../features/editor/Editor.jsx';
 import Folders from '../features/folders/Folders.jsx';
 import Accounts from '../features/accounts/Accounts.jsx';
 import Activity from '../features/activity/Activity.jsx';
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="/fila" element={<Queue />} />
               <Route path="/horarios" element={<Schedule />} />
               <Route path="/calendario" element={<Calendar />} />
+              <Route path="/editor" element={<Editor />} />
               <Route path="/biblioteca" element={<Library />} />
               <Route path="/pastas" element={<Folders />} />
               <Route path="/contas" element={<Accounts />} />

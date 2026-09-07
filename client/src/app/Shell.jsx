@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
-  Users, Activity, HardDrive, Settings as SettingsIcon,
+  Users, Activity, HardDrive, Settings as SettingsIcon, Wand2,
   PanelLeftClose, PanelLeft, Film, Check, AlertTriangle,
 } from 'lucide-react';
 import { useAccount } from '../hooks/useAccount.jsx';
@@ -27,6 +27,7 @@ const NAV = [
   {
     label: 'Conteúdo',
     items: [
+      { to: '/editor', label: 'Editor em Massa', icon: Wand2 },
       { to: '/biblioteca', label: 'Legendas & Hashtags', icon: Hash },
       { to: '/pastas', label: 'Pastas monitoradas', icon: FolderSync },
     ],
@@ -52,6 +53,7 @@ const TITLES = {
   '/fila': 'Fila de vídeos',
   '/horarios': 'Horários',
   '/calendario': 'Calendário',
+  '/editor': 'Editor em Massa',
   '/biblioteca': 'Legendas & Hashtags',
   '/pastas': 'Pastas monitoradas',
   '/contas': 'Contas',

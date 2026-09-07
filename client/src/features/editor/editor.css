@@ -1,0 +1,40 @@
+/* Reaproveita a dropzone da Fila */
+@import '../queue/queue.css';
+
+.src-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 9px; }
+
+.src {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--inset); text-align: left; font-size: 12px;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.src:hover { border-color: var(--line-strong); }
+.src.is-on { border-color: var(--brand); background: var(--brand-soft); }
+.src__check { display: flex; height: 14px; color: var(--brand); }
+.src__name { font-weight: 600; word-break: break-all; line-height: 1.35; }
+
+/* Grade de lote: N itens visíveis ao mesmo tempo, cada um com seu estado.
+   É o padrão da referência — acompanhar o lote inteiro de relance, em vez de
+   uma barra única que não diz qual vídeo travou. */
+.batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+
+.bi {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 9px 11px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--inset);
+  font-size: 11.5px; min-height: 56px;
+}
+.bi__head { display: flex; align-items: center; gap: 6px; }
+.bi__head svg { flex-shrink: 0; }
+.bi__name { font-weight: 600; word-break: break-all; line-height: 1.3; }
+.bi__err { color: #fca5a5; line-height: 1.4; word-break: break-word; }
+
+.bi--DONE { border-color: rgba(52, 211, 153, 0.3); }
+.bi--DONE .bi__head svg { color: var(--ok); }
+.bi--RUNNING { border-color: rgba(245, 185, 66, 0.35); }
+.bi--RUNNING .bi__head svg { color: var(--warn); }
+.bi--FAILED { border-color: rgba(247, 95, 109, 0.35); }
+.bi--FAILED .bi__head svg { color: var(--danger); }
+.bi--PENDING { opacity: 0.6; }
+.bi--CANCELLED { opacity: 0.45; }
