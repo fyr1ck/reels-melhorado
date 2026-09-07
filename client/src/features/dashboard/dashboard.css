@@ -1,0 +1,41 @@
+.cov { display: flex; align-items: center; justify-content: space-between; gap: 26px; flex-wrap: wrap; }
+/* Os filhos são <span>, que é inline por padrão: sem o flex-column o valor
+   grande e a descrição ficavam na mesma linha. */
+.cov__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cov__label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-2);
+}
+.cov__value { font-size: 36px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.1; margin: 5px 0 4px; }
+.cov__side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 200px; }
+.cov__side .ui-meter { width: 100%; }
+
+.next { display: flex; flex-direction: column; gap: 10px; }
+.next__when { display: flex; align-items: baseline; gap: 9px; }
+.next__when b { font-size: 16px; letter-spacing: -0.02em; }
+.next__what { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 13px; }
+.next__what > span { word-break: break-all; }
+
+.errs { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+.errs li { padding-bottom: 11px; border-bottom: 1px solid var(--line-soft); }
+.errs li:last-child { border-bottom: none; padding-bottom: 0; }
+.errs__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
+.errs p { font-size: 11.5px; line-height: 1.5; margin-top: 3px; }
+
+.acct {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-1);
+}
+.acct__top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.acct__av {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
+  background: var(--brand-grad); color: #fff; font-size: 11px; font-weight: 700;
+}
+.acct__id { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.acct__id b { font-size: 13px; }
+.acct__id span { font-size: 11px; }
+.acct__nums { display: flex; gap: 13px; flex-wrap: wrap; font-size: 12px; margin-bottom: 9px; }

@@ -1,0 +1,25 @@
+.cf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(5, 6, 10, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in 0.15s var(--ease);
+}
+
+.cf-box {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  box-shadow: var(--sh-3);
+}
+.cf-box h3 { font-size: 15px; font-weight: 650; margin-bottom: 8px; }
+.cf-box p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.cf-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }

@@ -1,0 +1,26 @@
+.acc-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+@media (max-width: 700px) { .acc-form { grid-template-columns: 1fr; } }
+
+.acc.is-off { opacity: 0.55; }
+
+.acc__head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+.acc__av {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  background: var(--brand-grad); color: #fff; font-size: 12px; font-weight: 700;
+}
+.acc__id { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.acc__id b { font-size: 13.5px; }
+.acc__id span { font-size: 11px; }
+
+.acc__stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 11px; }
+.acc__stats div { display: flex; flex-direction: column; }
+.acc__stats b { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.acc__stats span { font-size: 10.5px; color: var(--text-3); }
+
+.acc__next { margin: 11px 0; line-height: 1.6; }
+.acc__actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 13px; }
+
+.acc-help { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; line-height: 1.6; }
+.acc-help li { display: flex; align-items: flex-start; gap: 8px; }
+.acc-help svg { flex-shrink: 0; margin-top: 3px; color: var(--text-3); }

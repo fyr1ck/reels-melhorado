@@ -1,0 +1,10 @@
+.set-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; }
+.set-link {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--inset); font-size: 13px;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.set-link:hover { border-color: var(--brand); background: var(--surface-3); }
+.set-link b { flex: 1; min-width: 0; font-weight: 600; }
+.set-link svg { color: var(--text-3); flex-shrink: 0; }
