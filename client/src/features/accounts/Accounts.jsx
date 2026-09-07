@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  UserPlus, Plug, Unplug, Play, Pause, Power, Star, Trash2, Shuffle, Info,
+  UserPlus, Plug, Unplug, Play, Pause, Power, Star, Trash2, Shuffle, Info, Pencil,
 } from 'lucide-react';
 import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
@@ -8,6 +8,7 @@ import { useConfirm } from '../../hooks/useConfirm.jsx';
 import { useMutation } from '../../hooks/useQuery.js';
 import { api } from '../../lib/api.js';
 import { Card, Button, Badge, Input, Field, Checkbox, Meter, Banner, Empty } from '../../design/ui.jsx';
+import AccountEditor from './AccountEditor.jsx';
 import { days, dateTime } from '../../lib/format.js';
 import './accounts.css';
 
@@ -18,6 +19,7 @@ export default function Accounts() {
 
   const [form, setForm] = useState({ username: '', label: '' });
   const [busyId, setBusyId] = useState(null);
+  const [editando, setEditando] = useState(null);
 
   const criar = useMutation(async () => {
     const conta = await api.post('/accounts', form);
@@ -161,13 +163,13 @@ export default function Accounts() {
               {a.connected && a.lastConnectedAt && <><br />Conectada em {dateTime(a.lastConnectedAt)}</>}
             </p>
 
-            <Checkbox
-              label="Ordem aleatória"
-              hint="Sorteia o próximo vídeo em vez de seguir a ordem da fila."
-              checked={a.randomOrder}
-              disabled={busyId === a.id}
-              onChange={(e) => patch(a, { randomOrder: e.target.checked })}
-            />
+            <div className="acc__flags">
+              {a.randomOrder && <Badge tone="muted"><Shuffle size={11} /> ordem aleatória</Badge>}
+              <Badge tone="muted">
+                {a.scheduleMode === 'INTERVAL' ? `a cada ${a.intervalMinutes} min` : `${a.slots} horário(s)`}
+              </Badge>
+              {a.fallbackCaption && <Badge tone="muted">legenda padrão</Badge>}
+            </div>
 
             <div className="acc__actions">
               {a.connected ? (
@@ -197,6 +199,13 @@ export default function Accounts() {
                 {a.enabled ? 'Ligada' : 'Desligada'}
               </Button>
 
+              <Button
+                size="sm" icon={Pencil} title="Editar @, legenda padrão e ritmo"
+                onClick={() => setEditando(editando === a.id ? null : a.id)}
+              >
+                Editar
+              </Button>
+
               {a.isDefault ? (
                 <Badge tone="brand">padrão</Badge>
               ) : (
@@ -210,6 +219,15 @@ export default function Accounts() {
           </Card>
         ))}
       </div>
+
+      {editando && (
+        <div className="mt">
+          <AccountEditor
+            account={accounts.find((a) => a.id === editando)}
+            onSaved={async () => { await reload(); setEditando(null); }}
+          />
+        </div>
+      )}
 
       <Card title="Como funciona" icon={Info} className="mt">
         <ul className="acc-help">

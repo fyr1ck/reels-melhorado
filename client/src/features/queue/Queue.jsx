@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square } from 'lucide-react';
+import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
 import { useConfirm } from '../../hooks/useConfirm.jsx';
 import { api } from '../../lib/api.js';
-import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton } from '../../design/ui.jsx';
+import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton, Checkbox } from '../../design/ui.jsx';
 import { bytes, duration, dateTime } from '../../lib/format.js';
 import './queue.css';
 
@@ -31,6 +32,9 @@ export default function Queue() {
   const inputRef = useRef(null);
   const capaRef = useRef(null);
   const [capaAlvo, setCapaAlvo] = useState(null);
+
+  const { data: settings, reload: reloadSettings } = useQuery('/settings');
+  const padraoRef = useRef(null);
 
   const { data: videos, loading, reload } = useQuery('/videos', {
     params: { accountId, status: aba },
@@ -127,6 +131,19 @@ export default function Queue() {
     }
   }
 
+  /** Capa padrão: aplicada a todo vídeo novo que não trouxer a própria. */
+  async function enviarCapaPadrao(file) {
+    const fd = new FormData();
+    fd.append('cover', file);
+    try {
+      await api.post('/settings/default-cover', fd);
+      await reloadSettings({ quiet: true });
+      toast.success('Capa padrão definida. Vale para os próximos vídeos.');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   const alternar = (id) => setSelecao((s) => {
     const n = new Set(s);
     n.has(id) ? n.delete(id) : n.add(id);
@@ -184,6 +201,55 @@ export default function Queue() {
         <span>{enviar.busy ? 'Enviando…' : 'Arraste vídeos aqui ou clique para escolher'}</span>
         <em className="faint">MP4, MOV, MKV ou WebM</em>
       </div>
+
+      <input
+        ref={padraoRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) enviarCapaPadrao(f);
+        }}
+      />
+
+      {settings && (
+        <Card className="cover-bar">
+          <div className="cover-bar__thumb">
+            {settings.defaultCoverPath
+              ? <img src={`/api/covers/${settings.defaultCoverPath}`} alt="Capa padrão" />
+              : <Image size={16} />}
+          </div>
+          <div className="cover-bar__text">
+            <b>Capa padrão</b>
+            <span className="faint">
+              {settings.defaultCoverPath
+                ? 'Aplicada a cada novo vídeo que entra na fila sem capa própria.'
+                : 'Nenhuma definida — os vídeos entram sem capa e o Instagram escolhe um quadro.'}
+            </span>
+          </div>
+          <Checkbox
+            label="Usar"
+            checked={settings.useDefaultCover}
+            disabled={!settings.defaultCoverPath}
+            onChange={async (e) => {
+              await api.patch('/settings', { useDefaultCover: e.target.checked });
+              reloadSettings({ quiet: true });
+            }}
+          />
+          <div className="row">
+            <Button size="sm" icon={Image} onClick={() => padraoRef.current?.click()}>
+              {settings.defaultCoverPath ? 'Trocar' : 'Escolher'}
+            </Button>
+            {settings.defaultCoverPath && (
+              <Button size="sm" variant="danger" icon={Trash2}
+                      onClick={async () => {
+                        await api.del('/settings/default-cover');
+                        reloadSettings({ quiet: true });
+                        toast.success('Capa padrão removida.');
+                      }} />
+            )}
+          </div>
+        </Card>
+      )}
 
       <Tabs value={aba} onChange={setAba} items={ABAS} />
 

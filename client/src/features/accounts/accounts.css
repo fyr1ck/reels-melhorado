@@ -24,3 +24,5 @@
 .acc-help { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; line-height: 1.6; }
 .acc-help li { display: flex; align-items: flex-start; gap: 8px; }
 .acc-help svg { flex-shrink: 0; margin-top: 3px; color: var(--text-3); }
+
+.acc__flags { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }

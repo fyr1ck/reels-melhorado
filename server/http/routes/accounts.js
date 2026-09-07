@@ -39,6 +39,12 @@ router.patch('/:id', wrap(async (req, res) => {
   // Só entra no patch o que veio no corpo — um PATCH parcial nunca zera
   // silenciosamente o que o cliente não mandou.
   const data = {};
+
+  // Renomear é essencial: a conta padrão nasce como "conta-principal" e
+  // precisa virar o @ real do Instagram. A sessão do navegador é guardada por
+  // ID, não por nome, então trocar o @ não desconecta nada.
+  if (b.username !== undefined) data.username = v.username(b.username);
+
   if (b.label !== undefined) data.label = v.str(b.label, { field: 'Apelido', min: 0, max: 60 }) || null;
   if (b.enabled !== undefined) data.enabled = v.bool(b.enabled, { field: 'Habilitada' });
   if (b.randomOrder !== undefined) data.randomOrder = v.bool(b.randomOrder, { field: 'Ordem aleatória' });

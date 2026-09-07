@@ -35,8 +35,8 @@ export default function TemplateEditor({ onChanged }) {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const { data: templates, reload } = useQuery('/editor/templates');
-  const { data: padrao } = useQuery('/editor/templates/default');
+  const { data: templates, loading: carregandoLista, reload } = useQuery('/editor/templates');
+  const { data: padrao, loading: carregandoPadrao } = useQuery('/editor/templates/default');
 
   const [ativo, setAtivo] = useState(null);      // id do template em edição
   const [nome, setNome] = useState('');
@@ -46,12 +46,20 @@ export default function TemplateEditor({ onChanged }) {
   const assetRef = useRef(null);
   const [assetAlvo, setAssetAlvo] = useState(null);
 
-  // Carrega o primeiro template, ou monta um novo a partir do padrão.
+  /**
+   * Abre o primeiro template salvo, ou monta um novo se não houver nenhum.
+   *
+   * Espera as DUAS consultas terminarem. Decidir assim que o config padrão
+   * chegava criava uma corrida: ele é um JSON estático e respondia antes da
+   * lista, que consulta o banco — então o editor sempre abria em "novo
+   * template", mesmo com templates salvos. Quem editasse ali criava uma cópia
+   * em vez de alterar o próprio.
+   */
   useEffect(() => {
-    if (cfg || !padrao) return;
+    if (cfg || carregandoLista || carregandoPadrao || !padrao) return;
     if (templates?.length) abrir(templates[0]);
     else { setCfg(padrao); setNome('Meu template'); }
-  }, [templates, padrao]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [templates, padrao, carregandoLista, carregandoPadrao]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function abrir(t) {
     setAtivo(t.id);
