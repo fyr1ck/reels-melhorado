@@ -12,6 +12,7 @@ import {
   Card, Button, Badge, Tabs, Empty, Select, Field, Checkbox, Input, Metric, Skeleton, Meter,
 } from '../../design/ui.jsx';
 import { bytes, duration } from '../../lib/format.js';
+import TemplateEditor from './TemplateEditor.jsx';
 import './editor.css';
 
 const ICONE = {
@@ -34,7 +35,7 @@ export default function Editor() {
   const inputRef = useRef(null);
 
   const { data: sources, reload: reloadSources } = useQuery('/editor/sources');
-  const { data: templates } = useQuery('/editor/templates');
+  const { data: templates, reload: reloadTemplates } = useQuery('/editor/templates');
   // Polling curto enquanto há lote rodando: o progresso muda a cada segundo.
   const { data: batches, reload: reloadBatches } = useQuery('/editor/batches', { refetchMs: 2000 });
 
@@ -81,6 +82,7 @@ export default function Editor() {
         onChange={setAba}
         items={[
           { value: 'novo', label: 'Novo lote', count: selecionados.size || undefined },
+          { value: 'template', label: 'Templates', count: templates?.length },
           { value: 'lotes', label: 'Lotes', count: batches?.length },
         ]}
       />
@@ -146,7 +148,10 @@ export default function Editor() {
 
           <Card title="Configuração do lote" icon={Wand2}>
             <div className="grid grid--3">
-              <Field label="Template">
+              <Field
+                label="Template"
+                hint={!templates?.length ? 'Nenhum criado ainda — vá na aba Templates.' : undefined}
+              >
                 <Select value={opcoes.templateId} onChange={(e) => setOpcoes({ ...opcoes, templateId: e.target.value })}>
                   <option value="">Selecione…</option>
                   {templates?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -189,6 +194,8 @@ export default function Editor() {
           </Card>
         </div>
       )}
+
+      {aba === 'template' && <TemplateEditor onChanged={reloadTemplates} />}
 
       {aba === 'lotes' && (
         <div className="stack">
@@ -238,6 +245,9 @@ function BatchGrid({ batch, onChange, compact }) {
   const feitos = itens.filter((i) => i.status === 'DONE').length;
   const naFila = itens.filter((i) => i.queuedVideoId).length;
   const segundos = live ? Math.round(live.elapsedMs / 1000) : null;
+  // Ritmo só faz sentido depois que algo terminou: dividir por poucos segundos
+  // no começo daria número absurdo.
+  const ritmo = segundos > 3 && feitos > 0 ? ((feitos / segundos) * 60).toFixed(1) : null;
 
   return (
     <Card
@@ -265,8 +275,11 @@ function BatchGrid({ batch, onChange, compact }) {
         <Metric label="Concluídos" value={feitos} tone={feitos ? 'ok' : undefined} />
         <Metric label="Falhados" value={itens.filter((i) => i.status === 'FAILED').length}
                 tone={dados.failed ? 'danger' : undefined} />
-        <Metric label="Tempo" value={segundos != null ? `${segundos}s` : '—'}
-                hint={dados.status === 'RUNNING' ? 'em andamento' : 'total do lote'} />
+        <Metric
+          label="Tempo"
+          value={segundos != null ? `${segundos}s` : '—'}
+          hint={ritmo ? `${ritmo} vídeos/min` : dados.status === 'RUNNING' ? 'em andamento' : 'total do lote'}
+        />
       </div>
 
       {!compact && (
