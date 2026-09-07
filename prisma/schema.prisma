@@ -1,0 +1,382 @@
+// Reels Manager — modelo de dados
+//
+// Convenções desta base:
+//
+// 1. `accountId` é OBRIGATÓRIO em tudo que pertence a uma conta. Na versão
+//    anterior ele era opcional, e vídeos criados sem conta ficavam invisíveis
+//    ao agendador (que filtra por conta): entravam na fila e nunca publicavam.
+//    Tornar o campo obrigatório move esse erro do runtime para o schema.
+//
+// 2. O SQLite não tem tipo enum, então estados são String com os valores
+//    aceitos documentados na linha acima do campo. Quem valida é
+//    server/lib/enums.js, num lugar só.
+//
+// 3. `onDelete` é explícito em toda relação. Apagar uma conta não pode deixar
+//    lixo pendurado nem derrubar o app por violação de chave estrangeira.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// CONTAS
+// ============================================================
+
+/// Uma conta do Instagram. Cada uma tem sessão de navegador própria
+/// (playwright/session/<id>/), fila, horários e estado de automação.
+///
+/// O isolamento é apenas de sessão — cookies separados para o app não
+/// misturar contas. Não há mascaramento de fingerprint nem navegador
+/// anti-detecção: operar muitas contas continua sendo risco de bloqueio.
+model Account {
+  id       String  @id @default(uuid())
+  username String  @unique
+  label    String?
+
+  connected       Boolean   @default(false)
+  lastConnectedAt DateTime?
+
+  /// Conta desligada não entra no agendador, mesmo conectada.
+  enabled Boolean @default(true)
+  /// PAUSED | ACTIVE | INTERVENTION
+  status  String  @default("PAUSED")
+
+  /// Conta usada pelas telas quando nenhuma está selecionada.
+  isDefault Boolean @default(false)
+
+  // --- configuração de publicação, por conta ---
+  /// TIMES (horários fixos) | INTERVAL (a cada N minutos)
+  scheduleMode    String  @default("TIMES")
+  intervalMinutes Int     @default(60)
+  /// Sorteia o próximo vídeo em vez de seguir a ordem da fila.
+  randomOrder     Boolean @default(false)
+  /// Legenda usada quando o vídeo não tem a própria.
+  fallbackCaption String?
+
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  videos       Video[]
+  slots        Slot[]
+  publications Publication[]
+  batches      Batch[]
+  watchFolders WatchFolder[]
+
+  @@index([enabled, status])
+}
+
+// ============================================================
+// FILA
+// ============================================================
+
+/// Um vídeo aguardando publicação, publicando, publicado ou falhado.
+model Video {
+  id        String  @id @default(uuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  filename String
+  filepath String
+  caption  String?
+
+  /// REEL | STORY
+  mediaType String @default("REEL")
+  /// PENDING | SCHEDULED | PUBLISHING | PUBLISHED | FAILED
+  status    String @default("PENDING")
+
+  durationSec Float?
+  sizeBytes   Int?
+  width       Int?
+  height      Int?
+
+  /// Capa própria deste vídeo. Vazio = usa a capa padrão da conta, se houver.
+  coverPath String?
+
+  /// Posição na fila. Só importa quando a conta não usa ordem aleatória.
+  sortOrder Int @default(0)
+
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  failedAt    DateTime?
+
+  publications Publication[]
+  importedFrom ImportedFile?
+
+  @@index([accountId, status, mediaType])
+  @@index([accountId, sortOrder])
+}
+
+/// Vínculo entre um vídeo e um instante de publicação.
+model Publication {
+  id        String  @id @default(uuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  videoId   String
+  video     Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  scheduledAt DateTime
+  publishedAt DateTime?
+  /// SCHEDULED | PUBLISHING | PUBLISHED | FAILED
+  status      String    @default("SCHEDULED")
+
+  attempts     Int     @default(0)
+  errorMessage String?
+  durationMs   Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, status, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+/// Horário recorrente de publicação. Reels e stories têm grades separadas,
+/// então a mesma conta pode postar reel às 12h e story às 12h no mesmo dia.
+model Slot {
+  id        String  @id @default(uuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// "HH:mm"
+  time      String
+  /// REEL | STORY
+  mediaType String  @default("REEL")
+  enabled   Boolean @default(true)
+
+  /// Variação aleatória em minutos ao redor de `time`. 0 = horário exato.
+  /// Publicar sempre no minuto cravado é um padrão facilmente reconhecível.
+  jitterMinutes Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, time, mediaType])
+  @@index([accountId, enabled])
+}
+
+// ============================================================
+// BIBLIOTECA DE CONTEÚDO
+// ============================================================
+
+/// Legenda reutilizável. `weight` faz uma legenda boa sair mais vezes no
+/// rodízio sem precisar cadastrá-la duplicada.
+model Caption {
+  id        String   @id @default(uuid())
+  text      String
+  label     String?
+  enabled   Boolean  @default(true)
+  weight    Int      @default(1)
+  usedCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, usedCount])
+}
+
+/// Grupo de hashtags. `raw` guarda o texto como o usuário digitou; a
+/// normalização (# e deduplicação) acontece na leitura.
+model HashtagSet {
+  id        String   @id @default(uuid())
+  name      String
+  raw       String
+  enabled   Boolean  @default(true)
+  usedCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, usedCount])
+}
+
+// ============================================================
+// EDITOR EM MASSA
+// ============================================================
+
+/// Template visual reutilizável. `config` é um JSON com a estrutura completa.
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  config    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches Batch[]
+  items   BatchItem[]
+}
+
+/// Um lote: N vídeos de origem + 1 template.
+model Batch {
+  id         String   @id @default(uuid())
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  /// Conta de destino dos vídeos gerados.
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// PENDING | RUNNING | DONE | CANCELLED | FAILED
+  status    String @default("PENDING")
+  mediaType String @default("REEL")
+
+  total     Int @default(0)
+  done      Int @default(0)
+  failed    Int @default(0)
+  cancelled Int @default(0)
+
+  concurrency  Int     @default(2)
+  autoQueue    Boolean @default(true)
+  autoSchedule Boolean @default(false)
+
+  /// Aplica pequenas variações entre as cópias (corte, zoom, posição), para
+  /// N contas não publicarem arquivos byte a byte idênticos.
+  varyOutputs Boolean @default(false)
+
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  items BatchItem[]
+
+  @@index([status])
+}
+
+/// Um vídeo dentro de um lote: origem -> resultado.
+model BatchItem {
+  id         String   @id @default(uuid())
+  batchId    String
+  batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  sourceName String
+  sourcePath String
+  outputName String?
+  outputPath String?
+
+  /// PENDING | RUNNING | DONE | FAILED | CANCELLED
+  status       String  @default("PENDING")
+  progress     Int     @default(0)
+  errorMessage String?
+
+  queuedVideoId String?
+
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([batchId, status])
+}
+
+/// Vídeo enviado ao editor, antes de virar lote.
+model SourceVideo {
+  id          String   @id @default(uuid())
+  filename    String
+  filepath    String
+  durationSec Float?
+  sizeBytes   Int?
+  width       Int?
+  height      Int?
+  createdAt   DateTime @default(now())
+}
+
+// ============================================================
+// PASTAS MONITORADAS
+// ============================================================
+
+/// Pasta do disco observada. Se for a pasta que o Google Drive / OneDrive /
+/// Dropbox sincroniza, o efeito é o de importar direto da nuvem — sem OAuth.
+model WatchFolder {
+  id        String  @id @default(uuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  path  String  @unique
+  label String?
+
+  enabled Boolean @default(true)
+  /// COPY (mantém o original) | MOVE (remove da origem)
+  mode    String  @default("COPY")
+  /// REEL | STORY — tipo com que os importados entram na fila.
+  mediaType String @default("REEL")
+  /// Já aplica uma legenda da biblioteca na importação.
+  autoCaption Boolean @default(false)
+
+  lastScanAt    DateTime?
+  lastError     String?
+  importedCount Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  imports ImportedFile[]
+
+  @@index([enabled])
+}
+
+/// Registro do que já foi importado, para o mesmo arquivo não entrar duas
+/// vezes. A identidade é (pasta + caminho + tamanho + mtime).
+///
+/// `mtimeMs` é INTEIRO de propósito: guardado como REAL, a fração se perde no
+/// round-trip do SQLite (…112.9119 volta …112.912) e qualquer comparação
+/// feita em JS falha. Inteiros até 2^53 são exatos em double.
+model ImportedFile {
+  id            String      @id @default(uuid())
+  watchFolderId String
+  watchFolder   WatchFolder @relation(fields: [watchFolderId], references: [id], onDelete: Cascade)
+
+  sourcePath String
+  sizeBytes  Int
+  mtimeMs    Int
+
+  videoId String? @unique
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  importedAt DateTime @default(now())
+
+  @@unique([watchFolderId, sourcePath, sizeBytes, mtimeMs])
+  @@index([watchFolderId])
+}
+
+// ============================================================
+// SISTEMA
+// ============================================================
+
+/// Preferências que valem para a instalação inteira (linha única, id = 1).
+/// Tudo que é por conta mora em Account — este modelo guarda só o que
+/// realmente não pertence a nenhuma delas.
+model Settings {
+  id Int @id @default(1)
+
+  /// Reaproveita a janela do navegador entre publicações.
+  keepBrowserOpen Boolean @default(false)
+
+  /// Capa aplicada a novos vídeos que não trazem a própria.
+  defaultCoverPath String?
+  useDefaultCover  Boolean @default(false)
+
+  autoCleanCache      Boolean   @default(false)
+  autoCleanEveryHours Int       @default(24)
+  lastCacheCleanAt    DateTime?
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Auditoria. Toda ação relevante passa por aqui.
+model LogEntry {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  /// INFO | SUCCESS | WARN | ERROR
+  level   String @default("INFO")
+  /// Ação em SCREAMING_SNAKE (ex: PUBLICACAO_CONCLUIDA)
+  action  String
+  message String?
+
+  accountId String?
+  videoName String?
+  attempt   Int?
+  durationMs Int?
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+}

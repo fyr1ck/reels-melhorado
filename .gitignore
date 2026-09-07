@@ -1,0 +1,16 @@
+node_modules/
+client/node_modules/
+client/dist/
+prisma/data/
+*.db
+*.db-journal
+playwright/session/
+videos/pending/*
+videos/published/*
+videos/failed/*
+videos/covers/*
+videos/editor-*/*
+!videos/**/.gitkeep
+.env
+npm-debug.log*
+.claude/
