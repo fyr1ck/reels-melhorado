@@ -1,7 +1,14 @@
 .tpl { display: grid; grid-template-columns: 292px 1fr; gap: 16px; align-items: start; }
-@media (max-width: 1000px) { .tpl { grid-template-columns: 1fr; } }
 
-.tpl__side { position: sticky; top: 78px; }
+/* Fixar a previa so faz sentido com DUAS colunas: em coluna unica ela vira um
+   bloco no fluxo normal, e o `sticky` a fazia flutuar por cima do formulario
+   ao rolar a pagina. */
+.tpl__side { position: sticky; top: 78px; z-index: 1; }
+
+@media (max-width: 1000px) {
+  .tpl { grid-template-columns: 1fr; }
+  .tpl__side { position: static; }
+}
 .tpl__main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .tpl__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .tpl__nome { flex: 1; min-width: 200px; }

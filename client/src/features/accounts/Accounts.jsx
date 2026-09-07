@@ -206,15 +206,27 @@ export default function Accounts() {
                 Editar
               </Button>
 
-              {a.isDefault ? (
-                <Badge tone="brand">padrão</Badge>
-              ) : (
-                <>
-                  <Button size="sm" variant="icon" icon={Star} title="Tornar padrão"
-                          onClick={async () => { await api.post(`/accounts/${a.id}/default`); await reload(); }} />
-                  <Button size="sm" variant="danger" icon={Trash2} title="Remover" onClick={() => remover(a)} />
-                </>
+              {!a.isDefault && (
+                <Button size="sm" icon={Star} title="Tornar conta padrão"
+                        onClick={async () => { await api.post(`/accounts/${a.id}/default`); await reload(); }} />
               )}
+
+              {/* O botão fica SEMPRE visível, desabilitado com o motivo quando
+                  não dá para excluir. Escondê-lo fazia parecer que a função não
+                  existia — e a mais comum de querer excluir é justamente a
+                  conta padrão, criada automaticamente. */}
+              <Button
+                size="sm" variant="danger" icon={Trash2}
+                disabled={accounts.length === 1}
+                title={accounts.length === 1
+                  ? 'O app precisa de ao menos uma conta. Cadastre outra para poder excluir esta.'
+                  : `Excluir @${a.username}`}
+                onClick={() => remover(a)}
+              >
+                Excluir
+              </Button>
+
+              {a.isDefault && <Badge tone="brand">padrão</Badge>}
             </div>
           </Card>
         ))}

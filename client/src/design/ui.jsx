@@ -120,7 +120,8 @@ export function Tabs({ value, onChange, items }) {
           onClick={() => onChange(item.value)}
         >
           {item.label}
-          {item.count !== undefined && <span className="ui-tab__count">{item.count}</span>}
+          {/* Contador zero nao informa nada e ainda cola no rotulo ("Templates0"). */}
+          {!!item.count && <span className="ui-tab__count">{item.count}</span>}
         </button>
       ))}
     </div>

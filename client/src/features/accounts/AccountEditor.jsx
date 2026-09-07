@@ -87,47 +87,75 @@ export default function AccountEditor({ account, onSaved }) {
         />
       </Field>
 
-      <div className="grid grid--3 mt">
-        <Field label={<><Timer size={12} /> Ritmo de publicação</>}>
-          <Select value={form.scheduleMode} onChange={(e) => set('scheduleMode', e.target.value)}>
-            <option value="TIMES">Horários fixos</option>
-            <option value="INTERVAL">A cada X tempo</option>
-          </Select>
-        </Field>
+      <div className="ritmo mt">
+        <span className="ui-field__label"><Timer size={12} /> Quando publicar</span>
+
+        {/* Os dois modos ficam sempre visíveis, lado a lado. Antes o intervalo
+            só aparecia depois de trocar um seletor, e quem não mexia nele
+            concluía que a opção não existia. */}
+        <div className="ritmo__modos">
+          <button
+            type="button"
+            className={`ritmo__modo${form.scheduleMode === 'TIMES' ? ' is-on' : ''}`}
+            onClick={() => set('scheduleMode', 'TIMES')}
+          >
+            <b>Horários fixos</b>
+            <span>Ex: todo dia às 08:00, 12:00 e 18:00. Configure em Horários.</span>
+          </button>
+
+          <button
+            type="button"
+            className={`ritmo__modo${form.scheduleMode === 'INTERVAL' ? ' is-on' : ''}`}
+            onClick={() => set('scheduleMode', 'INTERVAL')}
+          >
+            <b>A cada X tempo</b>
+            <span>Ex: a cada 20 minutos, ou a cada 2 horas, sem parar.</span>
+          </button>
+        </div>
 
         {form.scheduleMode === 'INTERVAL' && (
-          <>
-            <Field label="Publicar a cada">
-              <Input
-                type="number" min={1} max={maximo} value={ritmo.valor}
-                onChange={(e) => setRitmo((r) => ({ ...r, valor: Math.min(maximo, Math.max(1, Number(e.target.value) || 1)) }))}
-              />
-            </Field>
-            <Field label="Unidade">
-              <Select
-                value={ritmo.unidade}
-                onChange={(e) => {
-                  const unidade = e.target.value;
-                  // Ao trocar de unidade, mantém o valor dentro do novo limite
-                  // em vez de deixar "300 horas" virar um intervalo impossível.
-                  setRitmo((r) => ({ unidade, valor: Math.min(unidade === 'h' ? 24 : 1440, r.valor) }));
-                }}
-              >
-                <option value="min">minutos</option>
-                <option value="h">horas</option>
-              </Select>
-            </Field>
-          </>
+          <div className="ritmo__valor">
+            <span>Publicar a cada</span>
+            <Input
+              type="number" min={1} max={maximo} value={ritmo.valor}
+              onChange={(e) => setRitmo((r) => ({ ...r, valor: Math.min(maximo, Math.max(1, Number(e.target.value) || 1)) }))}
+            />
+            <Select
+              value={ritmo.unidade}
+              onChange={(e) => {
+                const unidade = e.target.value;
+                // Ao trocar de unidade, mantém o valor dentro do novo limite em
+                // vez de deixar "300 horas" virar um intervalo impossível.
+                setRitmo((r) => ({ unidade, valor: Math.min(unidade === 'h' ? 24 : 1440, r.valor) }));
+              }}
+            >
+              <option value="min">minutos</option>
+              <option value="h">horas</option>
+            </Select>
+
+            <div className="ritmo__atalhos">
+              {[[10, 'min'], [20, 'min'], [30, 'min'], [1, 'h'], [2, 'h'], [6, 'h']].map(([v, u]) => (
+                <button
+                  key={`${v}${u}`}
+                  type="button"
+                  className={`ritmo__atalho${ritmo.valor === v && ritmo.unidade === u ? ' is-on' : ''}`}
+                  onClick={() => setRitmo({ valor: v, unidade: u })}
+                >
+                  {v}{u === 'h' ? 'h' : 'min'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {form.scheduleMode === 'INTERVAL' && (
+          <p className="faint">
+            A fila inteira é distribuída a partir de agora, um vídeo a cada{' '}
+            <b>{ritmo.valor} {ritmo.unidade === 'h' ? (ritmo.valor === 1 ? 'hora' : 'horas') : 'minutos'}</b>.
+            Nesse modo os horários fixos ficam salvos, mas não são usados.
+          </p>
         )}
       </div>
-
-      {form.scheduleMode === 'INTERVAL' && (
-        <p className="faint mt">
-          A fila inteira é distribuída a partir de agora, um vídeo a cada{' '}
-          <b>{ritmo.valor} {ritmo.unidade === 'h' ? (ritmo.valor === 1 ? 'hora' : 'horas') : 'minutos'}</b>.
-          Nesse modo os horários fixos ficam salvos mas não são usados.
-        </p>
-      )}
 
       <Checkbox
         className="mt"
