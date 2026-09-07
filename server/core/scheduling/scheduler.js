@@ -7,6 +7,7 @@ import * as logger from '../log.js';
 import { publishReel } from '../publishing/reel.js';
 import { STORY_UNSUPPORTED_REASON } from '../publishing/story.js';
 import { moveTo } from '../../lib/files.js';
+import * as covers from '../queue/covers.js';
 
 let timer = null;
 let busy = false;
@@ -226,10 +227,10 @@ async function run(publication) {
     });
 
     try {
-      const settings = await prisma.settings.findUnique({ where: { id: 1 } });
       const caption = video.caption || account.fallbackCaption || '';
-      const coverPath = video.coverPath
-        || (settings?.useDefaultCover ? settings.defaultCoverPath : null);
+      // resolveFor devolve caminho absoluto e já cai na capa padrão quando o
+      // vídeo não tem a própria — o publicador não precisa saber dessa regra.
+      const coverPath = await covers.resolveFor(video);
 
       const result = await publishReel({
         accountId: account.id,

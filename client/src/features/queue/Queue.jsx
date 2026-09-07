@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, Film, Check, X, Clapperboard } from 'lucide-react';
+import { Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square } from 'lucide-react';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
@@ -26,7 +26,11 @@ export default function Queue() {
   const [aba, setAba] = useState('PENDING');
   const [editando, setEditando] = useState(null);
   const [rascunho, setRascunho] = useState('');
+  const [selecao, setSelecao] = useState(new Set());
+  const [publicando, setPublicando] = useState(null);
   const inputRef = useRef(null);
+  const capaRef = useRef(null);
+  const [capaAlvo, setCapaAlvo] = useState(null);
 
   const { data: videos, loading, reload } = useQuery('/videos', {
     params: { accountId, status: aba },
@@ -65,6 +69,70 @@ export default function Queue() {
     toast.success('Legenda salva.');
   }
 
+  /**
+   * Publica um vídeo AGORA, fora do agendamento. Uma tentativa só: serve para
+   * verificar se a automação funciona, e o retry do agendador mascararia um
+   * problema real de configuração.
+   */
+  async function publicarAgora(video) {
+    const ok = await confirm({
+      title: `Publicar "${video.filename}" agora?`,
+      description:
+        `Vai ao ar em @${account?.username} IMEDIATAMENTE, fora do agendamento, e a janela do ` +
+        'navegador abre em tempo real. Uma única tentativa — sem repetição automática.',
+      confirmLabel: 'Publicar agora',
+      danger: true,
+    });
+    if (!ok) return;
+
+    setPublicando(video.id);
+    try {
+      const r = await api.post(`/videos/${video.id}/publish-now`);
+      await reload({ quiet: true });
+      toast.success(`Publicado em ${(r.durationMs / 1000).toFixed(0)}s.`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setPublicando(null);
+    }
+  }
+
+  async function removerSelecionados() {
+    const ok = await confirm({
+      title: `Remover ${selecao.size} vídeo(s)`,
+      description: 'Os arquivos são apagados do disco. Vídeos já publicados são preservados. Não há desfazer.',
+      confirmLabel: 'Remover',
+      danger: true,
+    });
+    if (!ok) return;
+
+    const r = await api.post('/videos/bulk-delete', { ids: [...selecao] });
+    setSelecao(new Set());
+    await reload({ quiet: true });
+    toast.success(`${r.removed} removido(s)${r.skipped ? `, ${r.skipped} preservado(s)` : ''}.`);
+  }
+
+  async function enviarCapa(file) {
+    if (!capaAlvo) return;
+    const fd = new FormData();
+    fd.append('cover', file);
+    try {
+      await api.post(`/videos/${capaAlvo}/cover`, fd);
+      await reload({ quiet: true });
+      toast.success('Capa definida.');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setCapaAlvo(null);
+    }
+  }
+
+  const alternar = (id) => setSelecao((s) => {
+    const n = new Set(s);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+
   const onDrop = (e) => {
     e.preventDefault();
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('video/'));
@@ -94,6 +162,15 @@ export default function Queue() {
         }}
       />
 
+      <input
+        ref={capaRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) enviarCapa(f);
+        }}
+      />
+
       <div
         className={`drop${enviar.busy ? ' is-busy' : ''}`}
         onClick={() => inputRef.current?.click()}
@@ -110,6 +187,23 @@ export default function Queue() {
 
       <Tabs value={aba} onChange={setAba} items={ABAS} />
 
+      {videos?.length > 0 && aba !== 'PUBLISHED' && (
+        <div className="qbar">
+          <Button
+            size="sm" variant="ghost"
+            icon={selecao.size === videos.length ? CheckSquare : Square}
+            onClick={() => setSelecao(new Set(selecao.size === videos.length ? [] : videos.map((x) => x.id)))}
+          >
+            {selecao.size === videos.length ? 'Limpar seleção' : 'Selecionar todos'}
+          </Button>
+          <span className="faint">{selecao.size} selecionado(s)</span>
+          <span style={{ flex: 1 }} />
+          <Button size="sm" variant="danger" icon={Trash2} disabled={!selecao.size} onClick={removerSelecionados}>
+            Remover selecionados
+          </Button>
+        </div>
+      )}
+
       {loading && !videos ? (
         <div className="stack">{[0, 1, 2].map((i) => <Skeleton key={i} height={78} />)}</div>
       ) : !videos?.length ? (
@@ -122,6 +216,15 @@ export default function Queue() {
         <div className="stack">
           {videos.map((v, i) => (
             <Card key={v.id} className="vid">
+              {aba !== 'PUBLISHED' && (
+                <input
+                  type="checkbox"
+                  className="vid__check"
+                  checked={selecao.has(v.id)}
+                  onChange={() => alternar(v.id)}
+                  aria-label={`Selecionar ${v.filename}`}
+                />
+              )}
               <span className="vid__pos">{i + 1}</span>
 
               <div className="vid__main">
@@ -131,6 +234,7 @@ export default function Queue() {
                     {v.mediaType === 'STORY' ? 'story' : 'reel'}
                   </Badge>
                   <Badge tone={TOM[v.status]}>{v.status.toLowerCase()}</Badge>
+                  {v.coverPath && <Badge tone="brand">capa</Badge>}
                 </div>
 
                 <div className="vid__meta faint">
@@ -161,6 +265,20 @@ export default function Queue() {
               </div>
 
               <div className="vid__actions">
+                {v.status === 'PENDING' && (
+                  <Button
+                    size="sm" variant="ghost" icon={Zap} title="Publicar agora, fora do agendamento"
+                    loading={publicando === v.id}
+                    onClick={() => publicarAgora(v)}
+                  />
+                )}
+                {editando !== v.id && (
+                  <Button
+                    size="sm" variant="ghost" icon={Image}
+                    title={v.coverPath ? 'Trocar capa' : 'Definir capa'}
+                    onClick={() => { setCapaAlvo(v.id); capaRef.current?.click(); }}
+                  />
+                )}
                 {editando !== v.id && (
                   <Button
                     size="sm"

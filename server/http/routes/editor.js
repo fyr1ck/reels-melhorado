@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import fs from 'fs';
+import path from 'path';
 import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { wrap } from '../middleware/errors.js';
@@ -12,6 +13,7 @@ import * as accounts from '../../core/accounts/accounts.js';
 import { MEDIA, MEDIA_TYPES } from '../../lib/enums.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as v from '../../lib/validate.js';
+import { ConflictError } from '../../lib/errors.js';
 
 ensureDirs();
 const router = Router();
@@ -54,6 +56,34 @@ router.delete('/sources/:id', wrap(async (req, res) => {
   try { fs.unlinkSync(s.filepath); } catch { /* pode já não existir */ }
   await prisma.sourceVideo.delete({ where: { id: s.id } });
   res.json({ ok: true });
+}));
+
+// ---------- recursos do template (foto, logo, fundo) ----------
+
+const assetUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, config.paths.editorAssets),
+    filename: (req, file, cb) => cb(null, uniqueName(file.originalname)),
+  }),
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(jpeg|jpg|png|webp)$/.test(file.mimetype);
+    cb(ok ? null : new ValidationError('Use uma imagem JPG, PNG ou WebP.'), ok);
+  },
+  limits: { fileSize: config.limits.coverBytes },
+});
+
+/** O template guarda só o NOME do arquivo; o caminho é resolvido na hora de
+    renderizar, para o template continuar válido se a pasta mudar de lugar. */
+router.post('/assets', assetUpload.single('asset'), wrap((req, res) => {
+  if (!req.file) throw new ValidationError('Nenhuma imagem enviada.');
+  res.status(201).json({ filename: path.basename(req.file.path), url: `/api/editor/assets/${path.basename(req.file.path)}` });
+}));
+
+router.get('/assets/:filename', wrap((req, res) => {
+  // basename impede que "../.." saia da pasta de recursos.
+  const full = path.join(config.paths.editorAssets, path.basename(req.params.filename));
+  if (!fs.existsSync(full)) throw new NotFoundError('Recurso não encontrado.');
+  res.sendFile(full);
 }));
 
 // ---------- templates ----------
@@ -151,6 +181,23 @@ router.post('/batches', wrap(async (req, res) => {
 router.post('/batches/:id/cancel', wrap((req, res) => {
   batch.cancel(req.params.id);
   res.json({ ok: true });
+}));
+
+/**
+ * Reprocessa um item que falhou, sem refazer o lote inteiro.
+ * Falha costuma ser de UM vídeo (corrompido, codec estranho); reprocessar
+ * dezenas por causa de um seria desperdício.
+ */
+router.post('/items/:id/retry', wrap(async (req, res) => {
+  const item = await prisma.batchItem.findUnique({ where: { id: req.params.id }, include: { batch: true } });
+  if (!item) throw new NotFoundError('Item não encontrado.');
+  if (batch.isRunning(item.batchId)) throw new ConflictError('O lote está em execução. Aguarde terminar.');
+
+  await prisma.batchItem.update({
+    where: { id: item.id },
+    data: { status: 'PENDING', progress: 0, errorMessage: null, outputPath: null, outputName: null },
+  });
+  res.json(await batch.start(item.batchId));
 }));
 
 router.post('/batches/:id/queue', wrap(async (req, res) => {

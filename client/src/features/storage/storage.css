@@ -5,3 +5,5 @@
 .dz-row:last-child { border-bottom: none; }
 .dz-row__name { font-size: 13px; font-weight: 600; }
 .dz-row__size { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.dz-row .faint { margin-top: 3px; max-width: 62ch; line-height: 1.5; }

@@ -5,6 +5,7 @@ import { ensureDirs } from './lib/files.js';
 import * as accounts from './core/accounts/accounts.js';
 import * as scheduler from './core/scheduling/scheduler.js';
 import * as watch from './core/watch/watch.js';
+import * as storage from './core/storage.js';
 import { closeAll } from './playwright/browser.js';
 import { VIDEO_STATUS, BATCH_STATUS } from './lib/enums.js';
 
@@ -61,6 +62,7 @@ async function bootstrap() {
   // cada conta, avaliado a cada tick. Uma flag global não responde por todas.
   scheduler.start();
   watch.start();
+  storage.startAutoClean();
 
   const app = createApp();
 
@@ -94,6 +96,7 @@ async function shutdown() {
   console.log('\nEncerrando…');
   scheduler.stop();
   watch.stop();
+  storage.stopAutoClean();
   await closeAll();
   await prisma.$disconnect();
   process.exit(0);
