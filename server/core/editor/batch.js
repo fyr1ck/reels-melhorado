@@ -10,6 +10,8 @@ import { renderTemplateLayers } from './render.js';
 import { probeVideo, runFfmpegJob, cleanupDir } from './ffmpeg.js';
 import { sortearVariacao, aplicarVariacao, SEM_VARIACAO, descrever } from './variation.js';
 import { regenerate } from '../scheduling/scheduler.js';
+import * as covers from '../queue/covers.js';
+import { fingerprint } from '../../lib/fingerprint.js';
 import * as logger from '../log.js';
 
 /**
@@ -255,6 +257,14 @@ export async function addToQueue(batchId, { autoSchedule = false } = {}) {
         filepath: item.outputPath,
         mediaType: batch.mediaType === MEDIA.STORY ? MEDIA.STORY : MEDIA.REEL,
         sortOrder: sortOrder++,
+        // Impressão do vídeo de ORIGEM, não do arquivo gerado. Com variação
+        // ligada, três cópias do mesmo vídeo saem diferentes byte a byte — mas
+        // continuam sendo o mesmo conteúdo, e é assim que precisam aparecer na
+        // seção de conteúdo repetido.
+        contentHash: fingerprint(item.sourcePath),
+        // Capa da conta de destino (ou a geral). O lote gera o vídeo, não a
+        // capa — sem isto, tudo que sai do editor entraria na fila sem nenhuma.
+        coverPath: await covers.padraoDaConta(batch.accountId),
         sizeBytes: sizeOf(item.outputPath),
         durationSec: meta.duration ?? null,
         width: meta.width ?? null,

@@ -200,7 +200,7 @@ export default function Accounts() {
               </Button>
 
               <Button
-                size="sm" icon={Pencil} title="Editar @, legenda padrão e ritmo"
+                size="sm" icon={Pencil} title="Editar @, apelido, legenda e capa padrão desta conta"
                 onClick={() => setEditando(editando === a.id ? null : a.id)}
               >
                 Editar

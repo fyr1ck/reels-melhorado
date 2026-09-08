@@ -13,6 +13,9 @@ import * as logger from '../../core/log.js';
 import { MEDIA, MEDIA_TYPES, VIDEO_STATUSES, VIDEO_STATUS } from '../../lib/enums.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as covers from '../../core/queue/covers.js';
+import * as duplicates from '../../core/queue/duplicates.js';
+import * as distribute from '../../core/queue/distribute.js';
+import { fingerprint } from '../../lib/fingerprint.js';
 import { publishReel } from '../../core/publishing/reel.js';
 import * as accountsCore from '../../core/accounts/accounts.js';
 import { moveTo } from '../../lib/files.js';
@@ -55,41 +58,143 @@ router.get('/', wrap(async (req, res) => {
   res.json(await prisma.video.findMany({ where, orderBy: { sortOrder: 'asc' } }));
 }));
 
+/**
+ * POST / — envia vídeos para a fila.
+ *
+ * Dois modos:
+ *
+ * - UMA CONTA (`accountId`): tudo vai para a fila dela.
+ * - DISTRIBUIR (`accountIds`, 2 ou mais): os arquivos são REPARTIDOS entre as
+ *   contas, um vídeo por conta. É o modo certo para quem opera vários perfis
+ *   do mesmo nicho: enviar o mesmo lote para cada conta faria as N publicarem
+ *   exatamente a mesma coisa.
+ *
+ * Em ambos, um arquivo cujo conteúdo já está na fila de outra conta é
+ * recusado (a menos que o bloqueio esteja desligado nas Configurações).
+ */
 router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
   const files = req.files || [];
   if (!files.length) throw new ValidationError('Nenhum vídeo enviado.');
 
-  const account = await accounts.resolve(req.body.accountId);
   const mediaType = req.body.mediaType === MEDIA.STORY ? MEDIA.STORY : MEDIA.REEL;
+  const settings = await prisma.settings.findUnique({ where: { id: 1 } });
 
-  const last = await prisma.video.findFirst({
-    where: { accountId: account.id },
-    orderBy: { sortOrder: 'desc' },
-  });
-  let sortOrder = last ? last.sortOrder + 1 : 0;
+  // `accountIds` chega como campo repetido do FormData; com um valor só o
+  // multer entrega string em vez de array.
+  const pedidas = []
+    .concat(req.body.accountIds ?? [])
+    .filter(Boolean);
+
+  let destinos;
+  if (pedidas.length > 1) {
+    destinos = await distribute.contasValidas(pedidas);
+    if (destinos.length < 2) {
+      throw new ValidationError('Selecione ao menos duas contas para distribuir.');
+    }
+  } else {
+    const account = await accounts.resolve(pedidas[0] ?? req.body.accountId);
+    destinos = [{ id: account.id, username: account.username }];
+  }
+
+  const distribuindo = destinos.length > 1;
+
+  // Reparte antes de gravar: assim a atribuição olha a fila como ela está
+  // agora, sem contar os vídeos deste mesmo lote duas vezes.
+  const plano = distribuindo
+    ? distribute.repartir(files, await distribute.cargas(destinos.map((d) => d.id)))
+    : files.map((file) => ({ item: file, accountId: destinos[0].id }));
+
+  const nomePorConta = new Map(destinos.map((d) => [d.id, d.username]));
+
+  // Próxima posição na fila de cada conta, buscada uma vez só.
+  const proxima = new Map();
+  for (const d of destinos) {
+    const last = await prisma.video.findFirst({
+      where: { accountId: d.id },
+      orderBy: { sortOrder: 'desc' },
+    });
+    proxima.set(d.id, last ? last.sortOrder + 1 : 0);
+  }
 
   const created = [];
-  for (const file of files) {
+  const skipped = [];
+  const tocadas = new Set();
+
+  for (const { item: file, accountId } of plano) {
+    const contentHash = fingerprint(file.path);
+
+    // O mesmo arquivo na fila de outra conta é o problema que a seção
+    // "Conteúdo repetido" existe para evitar. Barrar na entrada é melhor do que
+    // avisar depois: o vídeo nem chega a ocupar um horário.
+    if (settings?.blockDuplicateContent !== false && contentHash) {
+      const outras = await duplicates.outrasContasCom(contentHash, accountId);
+      if (outras.length) {
+        try { fs.unlinkSync(file.path); } catch { /* pode já não existir */ }
+        skipped.push({
+          filename: file.originalname,
+          reason: 'DUPLICADO',
+          accounts: outras.map((c) => c.username),
+        });
+        await logger.warn({
+          action: 'UPLOAD_DUPLICADO_BLOQUEADO', accountId, videoName: file.originalname,
+          message: `Mesmo conteúdo já está na fila de @${outras.map((c) => c.username).join(', @')}.`,
+        });
+        continue;
+      }
+    }
+
     const meta = await probe(file.path).catch(() => ({}));
     const video = await prisma.video.create({
       data: {
-        accountId: account.id,
+        accountId,
         filename: file.originalname,
         filepath: file.path,
         mediaType,
-        sortOrder: sortOrder++,
+        sortOrder: proxima.get(accountId),
+        contentHash,
         sizeBytes: sizeOf(file.path),
         durationSec: meta.durationSec ?? null,
         width: meta.width ?? null,
         height: meta.height ?? null,
+        coverPath: await covers.padraoDaConta(accountId, settings),
       },
     });
-    created.push(video);
-    await logger.info({ action: 'VIDEO_ADICIONADO', accountId: account.id, videoName: video.filename });
+    proxima.set(accountId, proxima.get(accountId) + 1);
+    tocadas.add(accountId);
+    created.push({ ...video, accountUsername: nomePorConta.get(accountId) });
+
+    await logger.info({
+      action: 'VIDEO_ADICIONADO', accountId, videoName: video.filename,
+      message: distribuindo ? `Distribuído para @${nomePorConta.get(accountId)}.` : undefined,
+    });
   }
 
-  await regenerate({ accountId: account.id });
-  res.status(201).json(created);
+  for (const accountId of tocadas) await regenerate({ accountId });
+
+  // Quanto cada conta recebeu — é o que a tela mostra depois de distribuir.
+  const porConta = destinos.map((d) => ({
+    accountId: d.id,
+    username: d.username,
+    count: created.filter((v) => v.accountId === d.id).length,
+  }));
+
+  res.status(201).json({ created, skipped, distributed: distribuindo, porConta });
+}));
+
+/** GET /duplicates — conteúdo repetido entre contas (e dentro de cada uma). */
+router.get('/duplicates', wrap(async (req, res) => {
+  await duplicates.backfill();
+  res.json(await duplicates.listar());
+}));
+
+/** POST /duplicates/resolve — mantém uma cópia e tira as outras da fila. */
+router.post('/duplicates/resolve', wrap(async (req, res) => {
+  const r = await duplicates.resolver({
+    hash: req.body.hash,
+    manterVideoId: req.body.keepVideoId,
+  });
+  for (const accountId of r.contas) await regenerate({ accountId });
+  res.json(r);
 }));
 
 router.patch('/:id', wrap(async (req, res) => {
@@ -187,7 +292,8 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
       accountId: video.accountId,
       filepath: video.filepath,
       videoName: video.filename,
-      caption: video.caption || video.account.fallbackCaption || '',
+      caption: video.caption || video.account.fallbackCaption
+        || (await prisma.settings.findUnique({ where: { id: 1 } }))?.defaultCaption || '',
       coverPath: await covers.resolveFor(video),
     });
 

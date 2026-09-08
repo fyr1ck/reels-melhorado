@@ -7,6 +7,9 @@ import { probe } from '../../lib/media.js';
 import { pickOne } from '../library/library.js';
 import { regenerate } from '../scheduling/scheduler.js';
 import { ValidationError } from '../../lib/errors.js';
+import { fingerprint } from '../../lib/fingerprint.js';
+import * as covers from '../queue/covers.js';
+import * as duplicates from '../queue/duplicates.js';
 import * as logger from '../log.js';
 
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.webm', '.m4v']);
@@ -114,16 +117,18 @@ export async function scanAll() {
     const folders = await prisma.watchFolder.findMany({ where: { enabled: true } });
     const touched = new Set();
     let imported = 0;
+    let ignored = 0;
 
     for (const folder of folders) {
       const r = await scanFolder(folder);
       imported += r.imported;
+      ignored += r.ignored ?? 0;
       if (r.imported) touched.add(folder.accountId);
     }
 
     for (const accountId of touched) await regenerate({ accountId });
 
-    return { imported, folders: folders.length };
+    return { imported, ignored, folders: folders.length };
   } finally {
     scanning = false;
   }
@@ -132,6 +137,7 @@ export async function scanAll() {
 export async function scanFolder(folder) {
   ensureDirs();
   let imported = 0;
+  let ignored = 0;
 
   try {
     for (const file of candidates(folder.path)) {
@@ -148,8 +154,9 @@ export async function scanFolder(folder) {
       if (already) continue;
 
       try {
-        await importOne(folder, file);
-        imported += 1;
+        const r = await importOne(folder, file);
+        if (!r?.skipped) imported += 1;
+        else ignored += 1;
       } catch (err) {
         await logger.error({
           action: 'IMPORTACAO_FALHOU', accountId: folder.accountId,
@@ -170,7 +177,7 @@ export async function scanFolder(folder) {
     await logger.error({ action: 'VARREDURA_FALHOU', message: `${folder.path}: ${err.message}` });
   }
 
-  return { imported };
+  return { imported, ignored };
 }
 
 async function importOne(folder, file) {
@@ -193,6 +200,34 @@ async function importOne(folder, file) {
     prisma.video.findFirst({ where: { accountId: folder.accountId }, orderBy: { sortOrder: 'desc' } }),
   ]);
 
+  // Mesma regra do upload: o arquivo que já está na fila de outra conta não
+  // entra. A pasta monitorada é justamente onde isso acontece sem querer —
+  // duas contas apontadas para a mesma pasta do Drive importariam tudo em
+  // duplicidade, e a varredura repetiria isso a cada ciclo.
+  const contentHash = fingerprint(target);
+  if (settings?.blockDuplicateContent !== false && contentHash) {
+    const outras = await duplicates.outrasContasCom(contentHash, folder.accountId);
+    if (outras.length) {
+      fs.unlinkSync(target);
+      // Registra mesmo sem vídeo: sem isto a próxima varredura copiaria o
+      // arquivo de novo, só para descartá-lo de novo.
+      await prisma.importedFile.create({
+        data: {
+          watchFolderId: folder.id,
+          sourcePath: file.path,
+          sizeBytes: file.sizeBytes,
+          mtimeMs: file.mtimeMs,
+          videoId: null,
+        },
+      });
+      await logger.warn({
+        action: 'IMPORTACAO_DUPLICADA_IGNORADA', accountId: folder.accountId, videoName: file.name,
+        message: `Mesmo conteúdo já está na fila de @${outras.map((c) => c.username).join(', @')}.`,
+      });
+      return { skipped: true };
+    }
+  }
+
   const caption = folder.autoCaption ? await pickOne() : null;
 
   const video = await prisma.video.create({
@@ -202,12 +237,13 @@ async function importOne(folder, file) {
       filepath: target,
       mediaType: folder.mediaType,
       caption,
+      contentHash,
       sortOrder: last ? last.sortOrder + 1 : 0,
       sizeBytes: sizeOf(target),
       durationSec: meta.durationSec,
       width: meta.width,
       height: meta.height,
-      coverPath: settings?.useDefaultCover ? settings.defaultCoverPath : null,
+      coverPath: await covers.padraoDaConta(folder.accountId, settings),
     },
   });
 
@@ -237,6 +273,8 @@ async function importOne(folder, file) {
     action: 'VIDEO_IMPORTADO', accountId: folder.accountId, videoName: file.name,
     message: `De ${folder.path}${caption ? ' com legenda da biblioteca' : ''}.`,
   });
+
+  return { skipped: false };
 }
 
 /** Quantos vídeos existem na pasta e quantos ainda não foram importados. */

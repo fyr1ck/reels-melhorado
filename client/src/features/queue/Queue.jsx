@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square } from 'lucide-react';
+import {
+  Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square, Split, Users,
+} from 'lucide-react';
 import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
@@ -20,7 +22,7 @@ const ABAS = [
 const TOM = { PENDING: 'muted', SCHEDULED: 'brand', PUBLISHING: 'warn', PUBLISHED: 'ok', FAILED: 'danger' };
 
 export default function Queue() {
-  const { accountId, account } = useAccount();
+  const { accountId, account, accounts } = useAccount();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -33,6 +35,11 @@ export default function Queue() {
   const capaRef = useRef(null);
   const [capaAlvo, setCapaAlvo] = useState(null);
 
+  // Distribuição: em vez de mandar o lote inteiro para uma conta, reparte
+  // entre as escolhidas — um vídeo por conta, sem repetir conteúdo.
+  const [distribuir, setDistribuir] = useState(false);
+  const [contasSel, setContasSel] = useState(new Set());
+
   const { data: settings, reload: reloadSettings } = useQuery('/settings');
   const padraoRef = useRef(null);
 
@@ -42,13 +49,43 @@ export default function Queue() {
     refetchMs: 15000,
   });
 
+  // Contas que vão receber. Sem seleção explícita, distribui entre todas.
+  const alvos = distribuir
+    ? (contasSel.size ? accounts.filter((a) => contasSel.has(a.id)) : accounts)
+    : [];
+
   const enviar = useMutation(async (files) => {
+    if (distribuir && alvos.length < 2) {
+      throw new Error('Escolha ao menos duas contas para distribuir.');
+    }
+
     const fd = new FormData();
     for (const f of files) fd.append('videos', f);
-    fd.append('accountId', accountId);
-    const criados = await api.post('/videos', fd);
+    if (distribuir) for (const a of alvos) fd.append('accountIds', a.id);
+    else fd.append('accountId', accountId);
+
+    const r = await api.post('/videos', fd);
     await reload({ quiet: true });
-    toast.success(`${criados.length} vídeo(s) na fila de @${account?.username}.`);
+
+    if (r.distributed) {
+      const resumo = r.porConta
+        .filter((c) => c.count)
+        .map((c) => `@${c.username}: ${c.count}`)
+        .join(' · ');
+      toast.success(`${r.created.length} vídeo(s) distribuído(s). ${resumo}`);
+    } else {
+      toast.success(`${r.created.length} vídeo(s) na fila de @${account?.username}.`);
+    }
+
+    // Recusas não são erro: o upload seguiu com o resto. Mas precisam
+    // aparecer, senão o usuário conta os arquivos e acha que sumiram.
+    if (r.skipped?.length) {
+      toast.error(
+        `${r.skipped.length} recusado(s) por já estar(em) em outra conta: `
+        + r.skipped.slice(0, 3).map((x) => x.filename).join(', ')
+        + (r.skipped.length > 3 ? '…' : ''),
+      );
+    }
   });
 
   async function remover(video) {
@@ -161,8 +198,8 @@ export default function Queue() {
       <div className="page-head">
         <h2>Fila de vídeos</h2>
         <p>
-          Fila de <b>@{account?.username ?? '—'}</b>. Novos vídeos entram nesta conta —
-          troque no seletor do menu.
+          Fila de <b>@{account?.username ?? '—'}</b>. Troque a conta no seletor do menu, ou
+          distribua um lote entre várias no painel abaixo.
         </p>
       </div>
 
@@ -187,6 +224,73 @@ export default function Queue() {
           if (f) enviarCapa(f);
         }}
       />
+
+      <Card
+        className="dist"
+        title="Para onde vão os vídeos"
+        icon={Split}
+        action={
+          <Badge tone={distribuir ? 'brand' : 'muted'}>
+            {distribuir ? `${alvos.length} contas` : `@${account?.username ?? '—'}`}
+          </Badge>
+        }
+      >
+        <div className="dist__modos">
+          <button
+            type="button"
+            className={`dist__modo${!distribuir ? ' is-active' : ''}`}
+            onClick={() => setDistribuir(false)}
+          >
+            <b>Uma conta só</b>
+            <span>Tudo entra na fila de @{account?.username ?? '—'}, a conta do seletor.</span>
+          </button>
+
+          <button
+            type="button"
+            className={`dist__modo${distribuir ? ' is-active' : ''}`}
+            onClick={() => setDistribuir(true)}
+            disabled={accounts.length < 2}
+            title={accounts.length < 2 ? 'Adicione uma segunda conta para poder distribuir.' : undefined}
+          >
+            <b>Distribuir entre contas</b>
+            <span>
+              Reparte o lote: cada vídeo vai para UMA conta. Nenhuma recebe o que a outra já tem.
+            </span>
+          </button>
+        </div>
+
+        {distribuir && (
+          <>
+            <p className="faint mt">
+              Quem participa. Cada arquivo vai para a conta com a menor fila no momento, então as
+              filas terminam do mesmo tamanho.
+            </p>
+            <div className="dist__contas">
+              {accounts.map((a) => {
+                const marcada = contasSel.size === 0 || contasSel.has(a.id);
+                return (
+                  <button
+                    type="button"
+                    key={a.id}
+                    className={`dist__conta${marcada ? ' is-on' : ''}`}
+                    onClick={() => setContasSel((prev) => {
+                      // A primeira desmarcação materializa "todas" numa
+                      // seleção concreta; sem isso o clique não teria efeito.
+                      const base = prev.size ? new Set(prev) : new Set(accounts.map((x) => x.id));
+                      base.has(a.id) ? base.delete(a.id) : base.add(a.id);
+                      return base;
+                    })}
+                  >
+                    <Users size={12} />
+                    <b>@{a.username}</b>
+                    <em>{a.reels} na fila</em>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Card>
 
       <div
         className={`drop${enviar.busy ? ' is-busy' : ''}`}
@@ -219,11 +323,11 @@ export default function Queue() {
               : <Image size={16} />}
           </div>
           <div className="cover-bar__text">
-            <b>Capa padrão</b>
+            <b>Capa padrão geral</b>
             <span className="faint">
               {settings.defaultCoverPath
-                ? 'Aplicada a cada novo vídeo que entra na fila sem capa própria.'
-                : 'Nenhuma definida — os vídeos entram sem capa e o Instagram escolhe um quadro.'}
+                ? 'Vale para todas as contas que não têm capa própria. Cada conta pode ter a sua em Contas.'
+                : 'Nenhuma definida — os vídeos entram sem capa e o Instagram escolhe um quadro. Cada conta também pode ter a sua, em Contas.'}
             </span>
           </div>
           <Checkbox

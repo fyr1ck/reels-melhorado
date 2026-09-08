@@ -58,6 +58,12 @@ model Account {
   /// Legenda usada quando o vídeo não tem a própria.
   fallbackCaption String?
 
+  /// Capa padrão DESTA conta. Cada perfil costuma ter identidade visual
+  /// própria; uma capa única para a instalação inteira só serve quando há uma
+  /// conta só. A resolução é: capa do vídeo > capa da conta > capa geral.
+  defaultCoverPath String?
+  useDefaultCover  Boolean @default(false)
+
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -101,6 +107,13 @@ model Video {
   /// Posição na fila. Só importa quando a conta não usa ordem aleatória.
   sortOrder Int @default(0)
 
+  /// Impressão digital do arquivo, para detectar o MESMO vídeo em contas
+  /// diferentes. É `tamanho-sha1(primeiro MB)`, não o hash do arquivo inteiro:
+  /// ler 500 MB por upload travaria a importação, e o primeiro megabyte já
+  /// contém cabeçalho e início do stream — dois arquivos distintos praticamente
+  /// nunca coincidem nos dois campos ao mesmo tempo.
+  contentHash String?
+
   createdAt   DateTime  @default(now())
   publishedAt DateTime?
   failedAt    DateTime?
@@ -110,6 +123,7 @@ model Video {
 
   @@index([accountId, status, mediaType])
   @@index([accountId, sortOrder])
+  @@index([contentHash])
 }
 
 /// Vínculo entre um vídeo e um instante de publicação.
@@ -350,7 +364,16 @@ model Settings {
   /// Reaproveita a janela do navegador entre publicações.
   keepBrowserOpen Boolean @default(false)
 
-  /// Capa aplicada a novos vídeos que não trazem a própria.
+  /// Recusa um vídeo cujo conteúdo já está na fila de OUTRA conta. Ligado por
+  /// padrão: publicar o mesmo arquivo em dois perfis é o padrão mais visível de
+  /// automação, e o segundo post não ganha alcance nenhum.
+  blockDuplicateContent Boolean @default(true)
+
+  /// Legenda de último recurso para a instalação inteira. Só entra quando o
+  /// vídeo não tem legenda própria e a conta não tem a dela.
+  defaultCaption String?
+
+  /// Capa aplicada a novos vídeos que não trazem a própria nem a da conta.
   defaultCoverPath String?
   useDefaultCover  Boolean @default(false)
 

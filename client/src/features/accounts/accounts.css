@@ -58,3 +58,34 @@
 }
 .ritmo__atalho:hover { border-color: var(--line-strong); color: var(--text); }
 .ritmo__atalho.is-on { border-color: var(--brand); background: var(--brand-soft); color: #c9bcff; }
+
+/* Capa padrão da conta: mesma faixa da capa geral, mas por perfil. */
+.acc-cover {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  flex-wrap: wrap;
+}
+
+.acc-cover__thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 58px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--text-3);
+  overflow: hidden;
+}
+.acc-cover__thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.acc-cover__text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 200px; }
+.acc-cover__text b { font-size: 13px; }
+.acc-cover__text span { line-height: 1.5; }

@@ -227,7 +227,10 @@ async function run(publication) {
     });
 
     try {
-      const caption = video.caption || account.fallbackCaption || '';
+      // Ordem da legenda: a do vídeo > a da conta > a padrão da instalação.
+      // A última existe para quem quer uma assinatura em tudo que sai.
+      const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+      const caption = video.caption || account.fallbackCaption || settings?.defaultCaption || '';
       // resolveFor devolve caminho absoluto e já cai na capa padrão quando o
       // vídeo não tem a própria — o publicador não precisa saber dessa regra.
       const coverPath = await covers.resolveFor(video);

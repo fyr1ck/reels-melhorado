@@ -22,6 +22,12 @@ router.patch('/', wrap(async (req, res) => {
   if (req.body.useDefaultCover !== undefined) {
     data.useDefaultCover = v.bool(req.body.useDefaultCover, { field: 'Usar capa padrão' });
   }
+  if (req.body.blockDuplicateContent !== undefined) {
+    data.blockDuplicateContent = v.bool(req.body.blockDuplicateContent, { field: 'Bloquear conteúdo repetido' });
+  }
+  if (req.body.defaultCaption !== undefined) {
+    data.defaultCaption = v.str(req.body.defaultCaption, { field: 'Legenda padrão', min: 0, max: 2200 }) || null;
+  }
   if (req.body.autoCleanCache !== undefined) {
     data.autoCleanCache = v.bool(req.body.autoCleanCache, { field: 'Limpeza automática' });
   }

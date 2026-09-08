@@ -9,8 +9,18 @@ import * as logger from '../../core/log.js';
 import { ACCOUNT_STATUSES, SCHEDULE_MODES } from '../../lib/enums.js';
 import { ConflictError, ValidationError } from '../../lib/errors.js';
 import * as v from '../../lib/validate.js';
+import multer from 'multer';
+import { config } from '../../config/env.js';
+import * as covers from '../../core/queue/covers.js';
 
 const router = Router();
+
+// Capa em memória: o nome do arquivo é o hash do conteúdo, calculado antes de
+// gravar, então o multer não pode escrever direto no disco.
+const coverUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.limits.coverBytes },
+});
 
 /** Lista com as métricas de operação de cada conta (os cards do painel). */
 router.get('/', wrap(async (req, res) => {
@@ -51,6 +61,9 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.fallbackCaption !== undefined) {
     data.fallbackCaption = v.str(b.fallbackCaption, { field: 'Legenda', min: 0, max: 2200 }) || null;
   }
+  if (b.useDefaultCover !== undefined) {
+    data.useDefaultCover = v.bool(b.useDefaultCover, { field: 'Usar capa da conta' });
+  }
   if (b.scheduleMode !== undefined) {
     data.scheduleMode = v.oneOf(b.scheduleMode, SCHEDULE_MODES, { field: 'Modo de agendamento' });
   }
@@ -65,6 +78,43 @@ router.patch('/:id', wrap(async (req, res) => {
 
   const updated = await prisma.account.update({ where: { id: account.id }, data });
   await regenerate({ accountId: account.id });
+  res.json(updated);
+}));
+
+/**
+ * POST /:id/cover — capa padrão DESTA conta.
+ *
+ * Cada perfil costuma ter identidade visual própria. A capa da conta entra em
+ * todo vídeo novo que não traz a sua, e perde só para a capa individual.
+ */
+router.post('/:id/cover', coverUpload.single('cover'), wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+  const filename = covers.save(req.file);
+  const anterior = account.defaultCoverPath;
+
+  const updated = await prisma.account.update({
+    where: { id: account.id },
+    data: { defaultCoverPath: filename, useDefaultCover: true },
+  });
+
+  // A imagem é nomeada pelo hash e pode ser compartilhada com vídeos e com
+  // outras contas — cleanupIfOrphan confere isso antes de apagar.
+  if (anterior && anterior !== filename) await covers.cleanupIfOrphan(anterior);
+
+  await logger.info({
+    action: 'CAPA_DA_CONTA_DEFINIDA', accountId: account.id,
+    message: `Capa padrão de @${account.username}.`,
+  });
+  res.json(updated);
+}));
+
+router.delete('/:id/cover', wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+  const updated = await prisma.account.update({
+    where: { id: account.id },
+    data: { defaultCoverPath: null, useDefaultCover: false },
+  });
+  if (account.defaultCoverPath) await covers.cleanupIfOrphan(account.defaultCoverPath);
   res.json(updated);
 }));
 

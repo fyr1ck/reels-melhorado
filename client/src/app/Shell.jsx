@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
+  Copy,
   Users, Activity, HardDrive, Settings as SettingsIcon, Wand2,
   PanelLeftClose, PanelLeft, Film, Check, AlertTriangle,
 } from 'lucide-react';
@@ -19,7 +20,7 @@ const NAV = [
   {
     label: 'Publicação',
     items: [
-      { to: '/fila', label: 'Fila', icon: ListVideo },
+      { to: '/fila', label: 'Fila', title: 'Fila de vídeos', icon: ListVideo },
       { to: '/horarios', label: 'Horários', icon: Clock },
       { to: '/calendario', label: 'Calendário', icon: CalendarDays },
     ],
@@ -30,6 +31,7 @@ const NAV = [
       { to: '/editor', label: 'Editor em Massa', icon: Wand2 },
       { to: '/biblioteca', label: 'Legendas & Hashtags', icon: Hash },
       { to: '/pastas', label: 'Pastas monitoradas', icon: FolderSync },
+      { to: '/conteudo-repetido', label: 'Conteúdo repetido', icon: Copy },
     ],
   },
   {
@@ -48,19 +50,17 @@ const NAV = [
   },
 ];
 
-const TITLES = {
-  '/': 'Dashboard',
-  '/fila': 'Fila de vídeos',
-  '/horarios': 'Horários',
-  '/calendario': 'Calendário',
-  '/editor': 'Editor em Massa',
-  '/biblioteca': 'Legendas & Hashtags',
-  '/pastas': 'Pastas monitoradas',
-  '/contas': 'Contas',
-  '/atividade': 'Atividade',
-  '/armazenamento': 'Armazenamento',
-  '/configuracoes': 'Configurações',
-};
+/**
+ * Título da barra de topo, DERIVADO do menu.
+ *
+ * Antes era uma segunda lista escrita à mão, e as duas saíam de sincronia na
+ * primeira tela nova: o menu ganhava o item e o topo continuava mostrando
+ * "Reels Manager". Um item usa `title` só quando o texto do topo precisa ser
+ * mais longo que o do menu.
+ */
+const TITLES = Object.fromEntries(
+  NAV.flatMap((g) => g.items).map((i) => [i.to, i.title ?? i.label]),
+);
 
 export default function Shell({ children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('rm.nav') === '1');

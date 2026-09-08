@@ -39,12 +39,30 @@ export function save(file) {
 }
 
 /**
- * Capa que o vídeo vai usar de fato: a própria, ou a padrão da instalação.
- * Devolve caminho absoluto — é o que o publicador precisa — ou null.
+ * Capa padrão aplicável a um vídeo novo daquela conta, na ordem:
+ * capa da CONTA > capa geral da instalação. Devolve o nome do arquivo (o que
+ * vai em `Video.coverPath`) ou null.
+ *
+ * A capa por conta existe porque cada perfil costuma ter identidade visual
+ * própria; uma capa única para a instalação inteira só serve com uma conta.
+ */
+export async function padraoDaConta(accountId, settings) {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { useDefaultCover: true, defaultCoverPath: true },
+  });
+  if (account?.useDefaultCover && account.defaultCoverPath) return account.defaultCoverPath;
+
+  const s = settings ?? (await prisma.settings.findUnique({ where: { id: 1 } }));
+  return s?.useDefaultCover ? s.defaultCoverPath : null;
+}
+
+/**
+ * Capa que o vídeo vai usar de fato, na ordem: a própria > a da conta > a
+ * geral. Devolve caminho absoluto — é o que o publicador precisa — ou null.
  */
 export async function resolveFor(video) {
-  const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const nome = video.coverPath || (settings?.useDefaultCover ? settings.defaultCoverPath : null);
+  const nome = video.coverPath || (await padraoDaConta(video.accountId));
   if (!nome) return null;
 
   const full = path.join(config.paths.covers, nome);
@@ -60,11 +78,12 @@ export async function resolveFor(video) {
 export async function cleanupIfOrphan(filename) {
   if (!filename) return false;
 
-  const [emUso, comoPadrao] = await Promise.all([
+  const [emUso, comoPadrao, comoPadraoDeConta] = await Promise.all([
     prisma.video.count({ where: { coverPath: filename } }),
     prisma.settings.count({ where: { id: 1, defaultCoverPath: filename } }),
+    prisma.account.count({ where: { defaultCoverPath: filename } }),
   ]);
-  if (emUso > 0 || comoPadrao > 0) return false;
+  if (emUso > 0 || comoPadrao > 0 || comoPadraoDeConta > 0) return false;
 
   try {
     fs.unlinkSync(path.join(config.paths.covers, filename));

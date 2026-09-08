@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { config } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import { ensureDirs } from './lib/files.js';
+import * as duplicates from './core/queue/duplicates.js';
 import * as accounts from './core/accounts/accounts.js';
 import * as scheduler from './core/scheduling/scheduler.js';
 import * as watch from './core/watch/watch.js';
@@ -57,6 +58,14 @@ async function bootstrap() {
   const account = await accounts.ensureDefault();
   await accounts.syncConnectionFlags();
   await recover();
+
+  // Calcula a impressão digital dos vídeos que ainda não têm uma. O campo
+  // nasceu depois deles: sem isto, a checagem de conteúdo repetido não teria
+  // com o que comparar e a tela abriria vazia para quem já usava o app.
+  const hashes = await duplicates.backfill();
+  if (hashes.calculados) {
+    console.log(`  Impressão digital calculada para ${hashes.calculados} vídeo(s).`);
+  }
 
   // O agendador sobe sempre: quem decide se algo é publicado é o estado de
   // cada conta, avaliado a cada tick. Uma flag global não responde por todas.

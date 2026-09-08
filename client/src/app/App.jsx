@@ -11,6 +11,7 @@ import Calendar from '../features/calendar/Calendar.jsx';
 import Library from '../features/library/Library.jsx';
 import Editor from '../features/editor/Editor.jsx';
 import Folders from '../features/folders/Folders.jsx';
+import Duplicates from '../features/duplicates/Duplicates.jsx';
 import Accounts from '../features/accounts/Accounts.jsx';
 import Activity from '../features/activity/Activity.jsx';
 import Storage from '../features/storage/Storage.jsx';
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/editor" element={<Editor />} />
               <Route path="/biblioteca" element={<Library />} />
               <Route path="/pastas" element={<Folders />} />
+              <Route path="/conteudo-repetido" element={<Duplicates />} />
               <Route path="/contas" element={<Accounts />} />
               <Route path="/atividade" element={<Activity />} />
               <Route path="/armazenamento" element={<Storage />} />

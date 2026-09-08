@@ -1,9 +1,10 @@
-import { Monitor, Save, ExternalLink, Info } from 'lucide-react';
+import { Monitor, Save, ExternalLink, Info, FileText, Copy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useToast } from '../../hooks/useToast.jsx';
 import { api } from '../../lib/api.js';
-import { Card, Button, Checkbox, Skeleton, Banner } from '../../design/ui.jsx';
+import { useEffect, useState } from 'react';
+import { Card, Button, Checkbox, Skeleton, Banner, Textarea, Field } from '../../design/ui.jsx';
 import './settings.css';
 
 /**
@@ -13,14 +14,22 @@ import './settings.css';
  */
 const ATALHOS = [
   { to: '/biblioteca', label: 'Legendas e hashtags', where: 'Biblioteca' },
-  { to: '/contas', label: 'Legenda padrão, ritmo e automação por conta', where: 'Contas' },
+  { to: '/contas', label: 'Legenda e capa padrão de cada conta', where: 'Contas' },
   { to: '/horarios', label: 'Horários e variação aleatória', where: 'Horários' },
+  { to: '/conteudo-repetido', label: 'Conteúdo repetido entre contas', where: 'Conteúdo repetido' },
   { to: '/armazenamento', label: 'Espaço em disco', where: 'Armazenamento' },
 ];
 
 export default function Settings() {
   const { data, loading, reload } = useQuery('/settings');
   const toast = useToast();
+  const [legenda, setLegenda] = useState('');
+
+  // Só sincroniza quando o servidor responde: sobrescrever a cada polling
+  // apagaria o que está sendo digitado.
+  useEffect(() => {
+    if (data) setLegenda(data.defaultCaption ?? '');
+  }, [data?.defaultCaption]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const salvar = useMutation(async (patch) => {
     await api.patch('/settings', patch);
@@ -50,6 +59,43 @@ export default function Settings() {
           arquivo <code>.env</code>. Vale manter visível: é assim que você resolve um CAPTCHA ou
           2FA quando o Instagram pedir.
         </Banner>
+      </Card>
+
+      <Card
+        title="Legenda padrão de todos os vídeos"
+        icon={FileText}
+        className="mt"
+        action={
+          <Button
+            variant="primary" icon={Save} loading={salvar.busy}
+            onClick={() => salvar.run({ defaultCaption: legenda })}
+          >
+            Salvar
+          </Button>
+        }
+      >
+        <Field hint="Último recurso da instalação inteira. A ordem é: legenda do vídeo > legenda da conta > esta. Se todo post sair com o mesmo texto, o padrão fica evidente — o rodízio da Biblioteca existe para variar.">
+          <Textarea
+            rows={3}
+            value={legenda}
+            onChange={(e) => setLegenda(e.target.value)}
+            placeholder="Ex: Siga para mais 🔥"
+          />
+        </Field>
+      </Card>
+
+      <Card title="Conteúdo repetido entre contas" icon={Copy} className="mt">
+        <Checkbox
+          label="Recusar vídeo que já está na fila de outra conta"
+          hint="Vale para o upload e para as pastas monitoradas. Duas contas publicando o mesmo vídeo é o padrão mais visível de automação — e o segundo post não ganha alcance nenhum."
+          checked={data?.blockDuplicateContent ?? true}
+          disabled={salvar.busy}
+          onChange={(e) => salvar.run({ blockDuplicateContent: e.target.checked })}
+        />
+        <p className="faint mt">
+          A tela <Link to="/conteudo-repetido">Conteúdo repetido</Link> mostra o que já entrou
+          duplicado e resolve mantendo uma cópia só.
+        </p>
       </Card>
 
       <Card title="Limpeza de cache" icon={Monitor} className="mt">

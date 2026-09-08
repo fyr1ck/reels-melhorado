@@ -50,3 +50,55 @@
 .cover-bar__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .cover-bar__text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
 .cover-bar__text b { font-size: 13px; }
+
+/* ============================================================
+   DESTINO DOS VÍDEOS (uma conta ou distribuído)
+   ============================================================ */
+
+.dist { margin-bottom: 14px; }
+
+.dist__modos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.dist__modo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--text-2);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.dist__modo:hover:not(:disabled) { border-color: var(--brand); }
+.dist__modo.is-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: var(--sheen);
+}
+.dist__modo:disabled { opacity: 0.45; cursor: not-allowed; }
+.dist__modo b { font-size: 13.5px; color: var(--text); }
+.dist__modo span { font-size: 12px; line-height: 1.5; }
+
+.dist__contas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+.dist__conta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--inset);
+  color: var(--text-3);
+  font-size: 12.5px;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.dist__conta.is-on { border-color: var(--brand); color: var(--text); background: var(--brand-soft); }
+.dist__conta b { font-weight: 600; }
+.dist__conta em { font-style: normal; font-size: 11px; color: var(--text-3); }
+
+@media (max-width: 700px) {
+  .dist__modos { grid-template-columns: 1fr; }
+}

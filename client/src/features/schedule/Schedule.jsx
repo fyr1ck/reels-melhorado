@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Clock, Plus, Trash2, Power, Repeat } from 'lucide-react';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
@@ -11,6 +11,13 @@ export default function Schedule() {
   const { accountId, account, reload: reloadAccounts } = useAccount();
   const toast = useToast();
   const [novo, setNovo] = useState('12:00');
+  const [ritmo, setRitmo] = useState({ valor: 60, unidade: 'min' });
+
+  // "a cada 2 horas" é mais fácil de raciocinar do que "a cada 120 minutos".
+  useEffect(() => {
+    const m = account?.intervalMinutes ?? 60;
+    setRitmo(m % 60 === 0 && m >= 60 ? { valor: m / 60, unidade: 'h' } : { valor: m, unidade: 'min' });
+  }, [account?.id, account?.intervalMinutes]);
 
   const { data: slots, reload } = useQuery('/slots', {
     params: { accountId, mediaType: 'REEL' },
@@ -32,6 +39,17 @@ export default function Schedule() {
     }
   }
 
+  async function salvarRitmo(proximo) {
+    const r = proximo ?? ritmo;
+    const intervalMinutes = r.unidade === 'h' ? r.valor * 60 : r.valor;
+    try {
+      await api.patch(`/accounts/${accountId}`, { intervalMinutes });
+      await reloadAccounts();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   async function trocarModo(mode) {
     await api.patch(`/accounts/${accountId}`, { scheduleMode: mode });
     await reloadAccounts();
@@ -40,6 +58,7 @@ export default function Schedule() {
 
   const ativos = slots?.filter((s) => s.enabled).length ?? 0;
   const modoIntervalo = account?.scheduleMode === 'INTERVAL';
+  const maximo = ritmo.unidade === 'h' ? 24 : 1440;
 
   return (
     <>
@@ -48,38 +67,77 @@ export default function Schedule() {
         <p>Grade de publicação de <b>@{account?.username ?? '—'}</b>. Cada conta tem a sua.</p>
       </div>
 
-      <Card title="Modo de agendamento" icon={Repeat}>
-        <div className="grid grid--2">
-          <Field label="Como publicar">
-            <Select value={account?.scheduleMode ?? 'TIMES'} onChange={(e) => trocarModo(e.target.value)}>
-              <option value="TIMES">Horários fixos (ex: 08:00, 12:00, 18:00)</option>
-              <option value="INTERVAL">A cada N minutos</option>
-            </Select>
-          </Field>
-          {modoIntervalo && (
-            <Field label="Intervalo em minutos" hint="Entre 1 e 1440 (24 h).">
-              <Input
-                type="number" min={1} max={1440}
-                defaultValue={account?.intervalMinutes ?? 60}
-                onBlur={async (e) => {
-                  try {
-                    await api.patch(`/accounts/${accountId}`, { intervalMinutes: Number(e.target.value) });
-                    await reloadAccounts();
-                    toast.success('Intervalo salvo.');
-                  } catch (err) { toast.error(err.message); }
-                }}
-              />
-            </Field>
-          )}
-        </div>
-      </Card>
+      <Card title="Quando publicar" icon={Repeat}>
+        {/* Os dois modos lado a lado, sempre visíveis. Escondê-los atrás de um
+            seletor fazia o modo intervalo parecer inexistente. */}
+        <div className="ritmo__modos">
+          <button
+            type="button"
+            className={`ritmo__modo${!modoIntervalo ? ' is-on' : ''}`}
+            onClick={() => trocarModo('TIMES')}
+          >
+            <b>Horários fixos</b>
+            <span>Ex: todo dia às 08:00, 12:00 e 18:00. Cadastre abaixo.</span>
+          </button>
 
-      {modoIntervalo ? (
-        <Banner tone="brand" icon={Clock} className="mt">
-          No modo intervalo a fila inteira é distribuída a cada {account?.intervalMinutes} minutos
-          a partir de agora. Os horários fixos abaixo ficam salvos, mas não são usados.
-        </Banner>
-      ) : null}
+          <button
+            type="button"
+            className={`ritmo__modo${modoIntervalo ? ' is-on' : ''}`}
+            onClick={() => trocarModo('INTERVAL')}
+          >
+            <b>A cada X tempo</b>
+            <span>Ex: a cada 20 minutos, ou a cada 2 horas, sem parar.</span>
+          </button>
+        </div>
+
+        {modoIntervalo && (
+          <>
+            <div className="ritmo__valor mt">
+              <span>Publicar a cada</span>
+              <Input
+                type="number" min={1} max={maximo} value={ritmo.valor}
+                onChange={(e) => setRitmo((r) => ({
+                  ...r, valor: Math.min(maximo, Math.max(1, Number(e.target.value) || 1)),
+                }))}
+                onBlur={salvarRitmo}
+              />
+              <Select
+                value={ritmo.unidade}
+                onChange={(e) => {
+                  const unidade = e.target.value;
+                  // Mantém o valor dentro do limite da nova unidade em vez de
+                  // deixar "300 horas" virar um intervalo impossível.
+                  const valor = Math.min(unidade === 'h' ? 24 : 1440, ritmo.valor);
+                  setRitmo({ unidade, valor });
+                  salvarRitmo({ unidade, valor });
+                }}
+              >
+                <option value="min">minutos</option>
+                <option value="h">horas</option>
+              </Select>
+
+              <div className="ritmo__atalhos">
+                {[[10, 'min'], [20, 'min'], [30, 'min'], [1, 'h'], [2, 'h'], [6, 'h']].map(([v, u]) => (
+                  <button
+                    key={`${v}${u}`}
+                    type="button"
+                    className={`ritmo__atalho${ritmo.valor === v && ritmo.unidade === u ? ' is-on' : ''}`}
+                    onClick={() => { setRitmo({ valor: v, unidade: u }); salvarRitmo({ valor: v, unidade: u }); }}
+                  >
+                    {v}{u === 'h' ? 'h' : 'min'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="faint mt">
+              A fila inteira é distribuída a partir de agora, um vídeo a cada{' '}
+              <b>{ritmo.valor} {ritmo.unidade === 'h' ? (ritmo.valor === 1 ? 'hora' : 'horas') : 'minutos'}</b>.
+              Os horários fixos abaixo ficam salvos, mas não são usados neste modo.
+            </p>
+          </>
+        )}
+      </Card>
 
       <Card title={`Horários cadastrados (${ativos} ativos)`} icon={Clock} className="mt">
         <form className="slot-add" onSubmit={(e) => { e.preventDefault(); criar.run().catch((err) => toast.error(err.message)); }}>
