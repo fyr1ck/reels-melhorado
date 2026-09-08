@@ -55,6 +55,23 @@ model Account {
   intervalMinutes Int     @default(60)
   /// Sorteia o próximo vídeo em vez de seguir a ordem da fila.
   randomOrder     Boolean @default(false)
+
+  // --- limites de segurança ---
+  /// Máximo de publicações por dia. 0 = sem teto.
+  dailyLimit Int @default(0)
+
+  /// Faixa "HH:mm" em que a conta não publica. Pode atravessar a meia-noite
+  /// ("23:00" a "07:00"). Publicar de madrugada não bloqueia a conta, mas
+  /// desperdiça o vídeo: ele nasce sem audiência.
+  quietStart String?
+  quietEnd   String?
+
+  /// Aquecimento de conta nova. Publicar 15 reels no primeiro dia é o caminho
+  /// mais curto para o bloqueio; a rampa começa em 1/dia e cresce até o alvo.
+  /// Null = sem aquecimento.
+  warmupStartAt DateTime?
+  warmupDays    Int       @default(14)
+  warmupTarget  Int       @default(6)
   /// Legenda usada quando o vídeo não tem a própria.
   fallbackCaption String?
 
@@ -142,6 +159,11 @@ model Publication {
   attempts     Int     @default(0)
   errorMessage String?
   durationMs   Int?
+
+  /// Quando a próxima tentativa pode acontecer. Guardar o instante (em vez de
+  /// esperar dentro do processo) mantém o agendador livre: um recuo de 10
+  /// minutos não pode impedir as OUTRAS contas de publicarem nesse intervalo.
+  nextAttemptAt DateTime?
 
   createdAt DateTime @default(now())
 

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
-  Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square, Split, Users,
+  Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square, Split, Users, Search,
 } from 'lucide-react';
 import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
@@ -8,7 +8,7 @@ import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
 import { useConfirm } from '../../hooks/useConfirm.jsx';
 import { api } from '../../lib/api.js';
-import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton, Checkbox } from '../../design/ui.jsx';
+import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton, Checkbox, Input } from '../../design/ui.jsx';
 import { bytes, duration, dateTime } from '../../lib/format.js';
 import './queue.css';
 
@@ -39,6 +39,11 @@ export default function Queue() {
   // entre as escolhidas — um vídeo por conta, sem repetir conteúdo.
   const [distribuir, setDistribuir] = useState(false);
   const [contasSel, setContasSel] = useState(new Set());
+
+  const [busca, setBusca] = useState('');
+  // Quantos itens a lista desenha. Uma fila de 300 vídeos gerava 300 cartões
+  // de uma vez, e a tela travava a cada digitada na legenda.
+  const [limite, setLimite] = useState(60);
 
   const { data: settings, reload: reloadSettings } = useQuery('/settings');
   const padraoRef = useRef(null);
@@ -180,6 +185,19 @@ export default function Queue() {
       toast.error(err.message);
     }
   }
+
+  // Filtro e recorte no cliente: a fila de uma conta cabe numa resposta só, e
+  // buscar no servidor a cada tecla digitada seria pior para quem opera local.
+  const filtrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return videos ?? [];
+    return (videos ?? []).filter((v) => (
+      v.filename.toLowerCase().includes(termo)
+      || (v.caption ?? '').toLowerCase().includes(termo)
+    ));
+  }, [videos, busca]);
+
+  const visiveis = useMemo(() => filtrados.slice(0, limite), [filtrados, limite]);
 
   const alternar = (id) => setSelecao((s) => {
     const n = new Set(s);
@@ -355,16 +373,35 @@ export default function Queue() {
         </Card>
       )}
 
-      <Tabs value={aba} onChange={setAba} items={ABAS} />
+      <Tabs value={aba} onChange={(v) => { setAba(v); setLimite(60); }} items={ABAS} />
 
-      {videos?.length > 0 && aba !== 'PUBLISHED' && (
+      {videos?.length > 6 && (
+        <div className="qbusca">
+          <Search size={14} />
+          <Input
+            value={busca}
+            placeholder={`Buscar entre ${videos.length} vídeo(s) por nome ou legenda…`}
+            onChange={(e) => { setBusca(e.target.value); setLimite(60); }}
+          />
+          {busca && (
+            <Button size="sm" variant="ghost" icon={X} onClick={() => setBusca('')} title="Limpar busca" />
+          )}
+        </div>
+      )}
+
+      {filtrados.length > 0 && aba !== 'PUBLISHED' && (
         <div className="qbar">
           <Button
             size="sm" variant="ghost"
-            icon={selecao.size === videos.length ? CheckSquare : Square}
-            onClick={() => setSelecao(new Set(selecao.size === videos.length ? [] : videos.map((x) => x.id)))}
+            icon={selecao.size === filtrados.length ? CheckSquare : Square}
+            onClick={() => setSelecao(new Set(
+              selecao.size === filtrados.length ? [] : filtrados.map((x) => x.id),
+            ))}
           >
-            {selecao.size === videos.length ? 'Limpar seleção' : 'Selecionar todos'}
+            {/* "Selecionar todos" com busca ativa seleciona o que está à
+                vista, não a fila inteira — senão o botão apagaria vídeos que
+                o usuário nem viu. */}
+            {selecao.size === filtrados.length ? 'Limpar seleção' : `Selecionar ${busca ? 'os encontrados' : 'todos'}`}
           </Button>
           <span className="faint">{selecao.size} selecionado(s)</span>
           <span style={{ flex: 1 }} />
@@ -376,15 +413,22 @@ export default function Queue() {
 
       {loading && !videos ? (
         <div className="stack">{[0, 1, 2].map((i) => <Skeleton key={i} height={78} />)}</div>
-      ) : !videos?.length ? (
+      ) : !filtrados.length ? (
         <Card>
-          <Empty icon={Film} title={`Nenhum vídeo ${ABAS.find((t) => t.value === aba).label.toLowerCase()}`}>
-            {aba === 'PENDING' && 'Envie vídeos acima ou configure uma pasta monitorada para a fila encher sozinha.'}
+          <Empty
+            icon={busca ? Search : Film}
+            title={busca
+              ? `Nada encontrado para "${busca}"`
+              : `Nenhum vídeo ${ABAS.find((t) => t.value === aba).label.toLowerCase()}`}
+          >
+            {busca
+              ? 'A busca olha o nome do arquivo e a legenda desta aba.'
+              : aba === 'PENDING' && 'Envie vídeos acima ou configure uma pasta monitorada para a fila encher sozinha.'}
           </Empty>
         </Card>
       ) : (
         <div className="stack">
-          {videos.map((v, i) => (
+          {visiveis.map((v, i) => (
             <Card key={v.id} className="vid">
               {aba !== 'PUBLISHED' && (
                 <input
@@ -462,6 +506,15 @@ export default function Queue() {
               </div>
             </Card>
           ))}
+
+          {filtrados.length > visiveis.length && (
+            <Button
+              className="qmais"
+              onClick={() => setLimite((n) => n + 100)}
+            >
+              Mostrar mais ({filtrados.length - visiveis.length} restantes)
+            </Button>
+          )}
         </div>
       )}
     </>

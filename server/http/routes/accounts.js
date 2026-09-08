@@ -26,7 +26,7 @@ const coverUpload = multer({
 router.get('/', wrap(async (req, res) => {
   await accounts.syncConnectionFlags();
   const list = await prisma.account.findMany({ orderBy: { sortOrder: 'asc' } });
-  res.json(await Promise.all(list.map((a) => accounts.summarize(a))));
+  res.json(await accounts.summarizeAll(list));
 }));
 
 router.post('/', wrap(async (req, res) => {
@@ -70,6 +70,40 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.intervalMinutes !== undefined) {
     data.intervalMinutes = v.int(b.intervalMinutes, { field: 'Intervalo', min: 1, max: 1440 });
   }
+  // --- limites de segurança ---
+  if (b.dailyLimit !== undefined) {
+    data.dailyLimit = v.int(b.dailyLimit, { field: 'Teto diário', min: 0, max: 200 });
+  }
+  // Silêncio: os dois campos andam juntos. String vazia desliga a janela, e
+  // desligar só metade dela deixaria uma regra impossível de interpretar.
+  if (b.quietStart !== undefined || b.quietEnd !== undefined) {
+    const inicio = b.quietStart || null;
+    const fim = b.quietEnd || null;
+    if (!inicio || !fim) {
+      data.quietStart = null;
+      data.quietEnd = null;
+    } else {
+      data.quietStart = v.time(inicio, { field: 'Início do silêncio' });
+      data.quietEnd = v.time(fim, { field: 'Fim do silêncio' });
+      if (data.quietStart === data.quietEnd) {
+        throw new ValidationError('O início e o fim do silêncio não podem ser iguais — isso silenciaria as 24 horas.');
+      }
+    }
+  }
+  if (b.warmupDays !== undefined) {
+    data.warmupDays = v.int(b.warmupDays, { field: 'Dias de aquecimento', min: 1, max: 90 });
+  }
+  if (b.warmupTarget !== undefined) {
+    data.warmupTarget = v.int(b.warmupTarget, { field: 'Alvo do aquecimento', min: 1, max: 50 });
+  }
+  if (b.warmupEnabled !== undefined) {
+    // Ligar marca o início AGORA; religar sem querer não pode reiniciar a
+    // rampa de quem já está no dia 12.
+    const ligar = v.bool(b.warmupEnabled, { field: 'Aquecimento' });
+    if (!ligar) data.warmupStartAt = null;
+    else if (!account.warmupStartAt) data.warmupStartAt = new Date();
+  }
+
   if (b.status !== undefined) {
     data.status = v.oneOf(b.status, ACCOUNT_STATUSES, { field: 'Estado' });
     // Ativar sem sessão só geraria falha em loop e pausaria de novo.

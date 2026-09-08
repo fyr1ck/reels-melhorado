@@ -181,9 +181,18 @@ router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
   res.status(201).json({ created, skipped, distributed: distribuindo, porConta });
 }));
 
-/** GET /duplicates — conteúdo repetido entre contas (e dentro de cada uma). */
+/**
+ * GET /duplicates — conteúdo repetido entre contas (e dentro de cada uma).
+ *
+ * NÃO recalcula impressões aqui: a tela faz polling a cada 30s, e o backfill
+ * dá um `stat()` em cada vídeo sem hash — com a fila grande isso varria o
+ * disco inteiro duas vezes por minuto, para sempre, já que arquivo ausente
+ * nunca ganha hash e volta na varredura seguinte. As impressões são
+ * calculadas onde o vídeo nasce (upload, pasta monitorada, editor) e uma vez
+ * no boot; `?rescan=1` força, para o botão "Verificar de novo".
+ */
 router.get('/duplicates', wrap(async (req, res) => {
-  await duplicates.backfill();
+  if (req.query.rescan === '1') await duplicates.backfill();
   res.json(await duplicates.listar());
 }));
 

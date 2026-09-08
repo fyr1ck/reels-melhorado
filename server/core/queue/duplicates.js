@@ -73,13 +73,23 @@ export async function backfill() {
     select: { id: true, filepath: true },
   });
 
-  let calculados = 0;
+  // Agrupa por hash antes de gravar: um UPDATE por vídeo fazia N idas ao
+  // banco, e vídeos com o mesmo conteúdo (o caso que este módulo procura)
+  // cabem no mesmo updateMany.
+  const porHash = new Map();
   for (const v of pendentes) {
     const hash = fingerprint(v.filepath);
     if (!hash) continue; // arquivo sumiu; tenta de novo na próxima vez
-    await prisma.video.update({ where: { id: v.id }, data: { contentHash: hash } });
-    calculados += 1;
+    if (!porHash.has(hash)) porHash.set(hash, []);
+    porHash.get(hash).push(v.id);
   }
+
+  let calculados = 0;
+  for (const [contentHash, ids] of porHash) {
+    await prisma.video.updateMany({ where: { id: { in: ids } }, data: { contentHash } });
+    calculados += ids.length;
+  }
+
   return { verificados: pendentes.length, calculados };
 }
 

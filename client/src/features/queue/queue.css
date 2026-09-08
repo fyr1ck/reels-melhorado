@@ -102,3 +102,25 @@
 @media (max-width: 700px) {
   .dist__modos { grid-template-columns: 1fr; }
 }
+
+/* Busca na fila: com centenas de vídeos, rolar até achar não é opção. */
+.qbusca {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 14px 0 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--text-3);
+}
+.qbusca .ui-input {
+  border: none;
+  background: transparent;
+  padding-left: 0;
+}
+.qbusca .ui-input:focus { box-shadow: none; }
+.qbusca:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+
+.qmais { width: 100%; justify-content: center; }

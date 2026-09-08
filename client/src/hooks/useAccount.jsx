@@ -33,8 +33,24 @@ export function AccountProvider({ children }) {
 
   useEffect(() => {
     reload();
-    const timer = setInterval(reload, 20000);
-    return () => clearInterval(timer);
+
+    // Mesma regra do useQuery: nada de recarregar com a aba escondida. Esta
+    // lista custa caro (métricas de cada conta) e é pedida por TODAS as telas.
+    let timer = null;
+    const parar = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const comecar = () => { parar(); timer = setInterval(reload, 20000); };
+
+    const aoTrocarVisibilidade = () => {
+      if (document.hidden) parar();
+      else { reload(); comecar(); }
+    };
+
+    if (!document.hidden) comecar();
+    document.addEventListener('visibilitychange', aoTrocarVisibilidade);
+    return () => {
+      parar();
+      document.removeEventListener('visibilitychange', aoTrocarVisibilidade);
+    };
   }, [reload]);
 
   useEffect(() => {

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Clock, Plus, Trash2, Power, Repeat } from 'lucide-react';
+import { Clock, Plus, Trash2, Power, Repeat, ShieldCheck, Moon, Flame, Gauge } from 'lucide-react';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
 import { api } from '../../lib/api.js';
-import { Card, Button, Badge, Input, Field, Select, Empty, Banner } from '../../design/ui.jsx';
+import { Card, Button, Badge, Input, Field, Select, Empty, Banner, Checkbox, Meter } from '../../design/ui.jsx';
 import './schedule.css';
 
 export default function Schedule() {
@@ -18,6 +18,55 @@ export default function Schedule() {
     const m = account?.intervalMinutes ?? 60;
     setRitmo(m % 60 === 0 && m >= 60 ? { valor: m / 60, unidade: 'h' } : { valor: m, unidade: 'min' });
   }, [account?.id, account?.intervalMinutes]);
+
+  const [limites, setLimites] = useState({
+    dailyLimit: 0, quietStart: '', quietEnd: '', warmupDays: 14, warmupTarget: 6,
+  });
+
+  useEffect(() => {
+    if (!account) return;
+    setLimites({
+      dailyLimit: account.dailyLimit ?? 0,
+      quietStart: account.quietStart ?? '',
+      quietEnd: account.quietEnd ?? '',
+      warmupDays: account.warmupDays ?? 14,
+      warmupTarget: account.warmupTarget ?? 6,
+    });
+  }, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const aquecendo = !!account?.warmupStartAt;
+
+  // Dias civis, como o servidor conta: quem liga o aquecimento às 23h não
+  // pode ver o dia 2 começar uma hora depois.
+  const diaAquecimento = aquecendo
+    ? Math.floor(
+      (new Date().setHours(0, 0, 0, 0) - new Date(account.warmupStartAt).setHours(0, 0, 0, 0))
+      / 86400000,
+    ) + 1
+    : 0;
+
+  const tetoDeHoje = aquecendo
+    ? Math.max(1, Math.ceil(
+      (account.warmupTarget * Math.min(diaAquecimento, account.warmupDays)) / account.warmupDays,
+    ))
+    : null;
+
+  async function salvarLimites(patch) {
+    try {
+      await api.patch(`/accounts/${accountId}`, patch);
+      await reloadAccounts();
+      toast.success('Limites atualizados. A grade foi refeita.');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  // Os dois campos do silêncio andam juntos: meia faixa não é uma regra.
+  const salvarSilencio = () => {
+    if (limites.quietStart && limites.quietEnd) {
+      salvarLimites({ quietStart: limites.quietStart, quietEnd: limites.quietEnd });
+    }
+  };
 
   const { data: slots, reload } = useQuery('/slots', {
     params: { accountId, mediaType: 'REEL' },
@@ -137,6 +186,119 @@ export default function Schedule() {
             </p>
           </>
         )}
+      </Card>
+
+      {/* Limites de segurança: o que protege a conta de ser bloqueada e o
+          conteúdo de ser desperdiçado. Aplicados na GERAÇÃO da grade, e não na
+          hora de publicar — assim o calendário mostra o que vai acontecer de
+          verdade, em vez de uma grade que seria ignorada depois. */}
+      <Card title="Limites de segurança" icon={ShieldCheck} className="mt">
+        <div className="lim">
+          <div className="lim__bloco">
+            <div className="lim__cab">
+              <Gauge size={14} />
+              <b>Teto diário</b>
+            </div>
+            <p className="faint">
+              Máximo de publicações por dia nesta conta, independente de quantos horários existam.
+            </p>
+            <div className="row mt">
+              <Input
+                type="number" min={0} max={200} style={{ width: 92 }}
+                value={limites.dailyLimit}
+                onChange={(e) => setLimites((l) => ({ ...l, dailyLimit: Number(e.target.value) }))}
+                onBlur={() => salvarLimites({ dailyLimit: limites.dailyLimit })}
+              />
+              <span className="faint">
+                {limites.dailyLimit > 0 ? 'por dia' : 'sem teto — usa todos os horários'}
+              </span>
+            </div>
+          </div>
+
+          <div className="lim__bloco">
+            <div className="lim__cab">
+              <Moon size={14} />
+              <b>Janela de silêncio</b>
+            </div>
+            <p className="faint">
+              Faixa em que a conta não publica. Pode atravessar a meia-noite. Postar de madrugada
+              não bloqueia nada, mas o vídeo nasce sem audiência.
+            </p>
+            <div className="row mt">
+              <Input
+                type="time" style={{ width: 118 }}
+                value={limites.quietStart}
+                onChange={(e) => setLimites((l) => ({ ...l, quietStart: e.target.value }))}
+                onBlur={salvarSilencio}
+              />
+              <span className="faint">até</span>
+              <Input
+                type="time" style={{ width: 118 }}
+                value={limites.quietEnd}
+                onChange={(e) => setLimites((l) => ({ ...l, quietEnd: e.target.value }))}
+                onBlur={salvarSilencio}
+              />
+              {(limites.quietStart || limites.quietEnd) && (
+                <Button
+                  size="sm" variant="ghost" icon={Trash2} title="Desligar o silêncio"
+                  onClick={() => {
+                    setLimites((l) => ({ ...l, quietStart: '', quietEnd: '' }));
+                    salvarLimites({ quietStart: '', quietEnd: '' });
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="lim__bloco mt">
+          <div className="lim__cab">
+            <Flame size={14} />
+            <b>Aquecimento da conta</b>
+            {aquecendo && <Badge tone="brand">dia {diaAquecimento} de {account.warmupDays}</Badge>}
+          </div>
+          <Checkbox
+            className="mt"
+            label="Começar devagar e ir aumentando"
+            hint="Perfil novo que publica 15 reels no primeiro dia é o caminho mais curto para o bloqueio. A rampa começa em 1 por dia e cresce até o alvo."
+            checked={aquecendo}
+            onChange={(e) => salvarLimites({ warmupEnabled: e.target.checked })}
+          />
+
+          {aquecendo && (
+            <>
+              <div className="row mt">
+                <Field label="Dias até o ritmo normal">
+                  <Input
+                    type="number" min={1} max={90} style={{ width: 92 }}
+                    value={limites.warmupDays}
+                    onChange={(e) => setLimites((l) => ({ ...l, warmupDays: Number(e.target.value) }))}
+                    onBlur={() => salvarLimites({ warmupDays: limites.warmupDays })}
+                  />
+                </Field>
+                <Field label="Alvo (posts/dia no fim)">
+                  <Input
+                    type="number" min={1} max={50} style={{ width: 92 }}
+                    value={limites.warmupTarget}
+                    onChange={(e) => setLimites((l) => ({ ...l, warmupTarget: Number(e.target.value) }))}
+                    onBlur={() => salvarLimites({ warmupTarget: limites.warmupTarget })}
+                  />
+                </Field>
+              </div>
+
+              <div className="mt">
+                <Meter
+                  value={Math.min(diaAquecimento, account.warmupDays)}
+                  max={account.warmupDays} tone="brand" label="Progresso do aquecimento"
+                />
+                <p className="faint mt">
+                  Hoje esta conta publica no máximo <b>{tetoDeHoje}</b> vídeo(s).
+                  Ao fim do aquecimento, {account.warmupTarget} por dia.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </Card>
 
       <Card title={`Horários cadastrados (${ativos} ativos)`} icon={Clock} className="mt">

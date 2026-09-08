@@ -22,7 +22,14 @@ export default function Duplicates() {
   const toast = useToast();
   const confirm = useConfirm();
 
+  // O polling só lê o que já está calculado. Recalcular as impressões é caro
+  // (um stat por arquivo) e fica no botão, onde o usuário pede na hora que quer.
   const { data, loading, reload } = useQuery('/videos/duplicates', { refetchMs: 30000 });
+  const revarrer = useMutation(async () => {
+    await api.get('/videos/duplicates', { rescan: 1 });
+    await reload({ quiet: true });
+    toast.success('Arquivos verificados.');
+  });
   const { data: settings, reload: reloadSettings } = useQuery('/settings');
 
   const bloqueio = useMutation(async (valor) => {
@@ -68,7 +75,12 @@ export default function Duplicates() {
             conteúdo está na fila de mais de uma conta — ou duas vezes na mesma.
           </p>
         </div>
-        <Button icon={RotateCw} onClick={() => reload()}>Verificar de novo</Button>
+        <Button
+          icon={RotateCw} loading={revarrer.busy}
+          onClick={() => revarrer.run().catch((e) => toast.error(e.message))}
+        >
+          Verificar de novo
+        </Button>
       </div>
 
       <div className="grid grid--3">

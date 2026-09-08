@@ -2,6 +2,7 @@ import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { MEDIA, VIDEO_STATUS, ACCOUNT_STATUS, SCHEDULE_MODE } from '../../lib/enums.js';
 import { applyJitter, slotOccurrences, slotWindow } from './slots.js';
+import { aplicarLimites, chaveDoDia, esperaDaTentativa } from './limits.js';
 import * as accounts from '../accounts/accounts.js';
 import * as logger from '../log.js';
 import { publishReel } from '../publishing/reel.js';
@@ -64,6 +65,40 @@ async function regenerateFor(account, days) {
 }
 
 /**
+ * Publicações que JÁ existem em cada dia e portanto consomem o teto diário.
+ *
+ * Conta as que foram ao ar (ou estão indo): as SCHEDULED foram apagadas no
+ * começo da regeração, então incluí-las contaria duas vezes o mesmo horário.
+ */
+async function publicadasPorDia(accountId) {
+  const feitas = await prisma.publication.findMany({
+    where: {
+      accountId,
+      status: { in: [VIDEO_STATUS.PUBLISHED, VIDEO_STATUS.PUBLISHING] },
+      scheduledAt: { gte: new Date(Date.now() - 2 * 86_400_000) },
+    },
+    select: { scheduledAt: true },
+  });
+
+  const porDia = {};
+  for (const p of feitas) {
+    const k = chaveDoDia(new Date(p.scheduledAt));
+    porDia[k] = (porDia[k] ?? 0) + 1;
+  }
+  return porDia;
+}
+
+/** As regras de limite de uma conta, no formato que limits.js espera. */
+const regrasDe = (account) => ({
+  dailyLimit: account.dailyLimit,
+  quietStart: account.quietStart,
+  quietEnd: account.quietEnd,
+  warmupStartAt: account.warmupStartAt,
+  warmupDays: account.warmupDays,
+  warmupTarget: account.warmupTarget,
+});
+
+/**
  * Próximo vídeo da fila. Com `randomOrder` sorteia entre os pendentes em vez
  * de seguir a posição — útil para acervo grande, que ficaria sempre na mesma
  * sequência.
@@ -102,12 +137,44 @@ async function byInterval(account) {
   if (!videos.length) return;
 
   const step = Math.max(1, account.intervalMinutes || 60) * 60_000;
-  let at = new Date();
 
-  for (const video of videos) {
+  // Gera os instantes primeiro e só então aplica os limites: um horário
+  // recusado pelo silêncio ou pelo teto não pode consumir um vídeo da fila.
+  // Sobram mais instantes que vídeos de propósito — os cortes precisam de
+  // folga para o último vídeo ainda achar lugar.
+  const brutos = [];
+  const inicio = Date.now();
+  for (let i = 0; i < videos.length * 4; i++) brutos.push(new Date(inicio + i * step));
+
+  const { mantidos, silencio, teto } = aplicarLimites(
+    brutos, regrasDe(account), { jaNoDia: await publicadasPorDia(account.id) },
+  );
+
+  for (const [i, video] of videos.entries()) {
+    const at = mantidos[i];
+    if (!at) break; // os limites consumiram a janela inteira
     await link(account, video, at);
-    at = new Date(at.getTime() + step);
   }
+
+  await avisarCortes(account, silencio, teto, mantidos.length < videos.length);
+}
+
+/**
+ * Registra no log quando os limites seguraram publicações.
+ *
+ * Sem isso o usuário veria a fila parada sem motivo aparente — o mesmo tipo de
+ * silêncio que já causou confusão em outras telas deste app.
+ */
+async function avisarCortes(account, silencio, teto, faltou) {
+  if (!silencio && !teto) return;
+  const partes = [];
+  if (silencio) partes.push(`${silencio} na janela de silêncio (${account.quietStart}–${account.quietEnd})`);
+  if (teto) partes.push(`${teto} acima do teto diário`);
+
+  await logger.info({
+    action: 'LIMITES_APLICADOS', accountId: account.id,
+    message: `Horários descartados: ${partes.join(' e ')}.${faltou ? ' Parte da fila ficou sem horário.' : ''}`,
+  });
 }
 
 /**
@@ -134,7 +201,18 @@ async function bySlots(account, days) {
     .flatMap((slot) => slotOccurrences(slot.time, days, { now }).map((at) => ({ slot, at })))
     .sort((a, b) => a.at - b.at);
 
+  // Teto diário, janela de silêncio e aquecimento. Filtrar aqui, e não na hora
+  // de publicar, faz o calendário mostrar a verdade: o usuário vê a grade que
+  // vai acontecer, não uma que será silenciosamente ignorada depois.
+  const { mantidos, silencio, teto } = aplicarLimites(
+    candidates.map((c) => c.at), regrasDe(account), { jaNoDia: await publicadasPorDia(account.id) },
+  );
+  const permitidos = new Set(mantidos.map((d) => d.getTime()));
+  await avisarCortes(account, silencio, teto, false);
+
   for (const { slot, at } of candidates) {
+    if (!permitidos.has(at.getTime())) continue;
+
     // Dedupe por JANELA, não por instante: com jitter o horário sorteado muda
     // a cada regeração, e comparar por igualdade duplicaria o slot.
     const exists = await prisma.publication.findFirst({
@@ -171,6 +249,8 @@ async function tick() {
       status: VIDEO_STATUS.SCHEDULED,
       scheduledAt: { lte: new Date() },
       accountId: { in: list.map((a) => a.id) },
+      // Uma publicação em recuo volta a ser elegível só depois da espera.
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
     },
     orderBy: { scheduledAt: 'asc' },
     include: { video: true, account: true },
@@ -253,7 +333,10 @@ async function run(publication) {
         });
         await prisma.publication.update({
           where: { id: publication.id },
-          data: { status: VIDEO_STATUS.PUBLISHED, publishedAt: new Date(), errorMessage: null, durationMs },
+          data: {
+            status: VIDEO_STATUS.PUBLISHED, publishedAt: new Date(),
+            errorMessage: null, durationMs, nextAttemptAt: null,
+          },
         });
         await logger.success({
           action: 'PUBLICACAO_CONCLUIDA', accountId: account.id,
@@ -267,6 +350,33 @@ async function run(publication) {
         videoName: video.filename, attempt, message: err.message,
         durationMs: Date.now() - started,
       });
+      // Recuo antes da próxima tentativa. Sem ele as 3 tentativas queimavam
+      // em segundos: uma queda de rede de 10s bastava para mandar o vídeo a
+      // /failed e pausar a conta inteira.
+      //
+      // O recuo é AGENDADO, não dormido: esperar aqui dentro seguraria o
+      // `busy` do agendador e impediria as outras contas de publicarem.
+      if (attempt < config.maxAttempts) {
+        const espera = esperaDaTentativa(attempt);
+        await prisma.publication.update({
+          where: { id: publication.id },
+          data: {
+            errorMessage: err.message,
+            status: VIDEO_STATUS.SCHEDULED,
+            nextAttemptAt: new Date(Date.now() + espera),
+          },
+        });
+        await prisma.video.update({
+          where: { id: video.id },
+          data: { status: VIDEO_STATUS.SCHEDULED },
+        });
+        await logger.info({
+          action: 'NOVA_TENTATIVA_AGENDADA', accountId: account.id, videoName: video.filename,
+          message: `Tentativa ${attempt + 1} em ${Math.round(espera / 60_000) || '<1'} min.`,
+        });
+        return;
+      }
+
       await prisma.publication.update({
         where: { id: publication.id },
         data: { errorMessage: err.message },

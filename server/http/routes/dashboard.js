@@ -14,7 +14,7 @@ const router = Router();
  */
 router.get('/', wrap(async (req, res) => {
   const list = await prisma.account.findMany({ orderBy: { sortOrder: 'asc' } });
-  const summaries = await Promise.all(list.map((a) => accounts.summarize(a)));
+  const summaries = await accounts.summarizeAll(list);
 
   const active = summaries.filter((a) => a.enabled && a.status === ACCOUNT_STATUS.ACTIVE);
   const connected = list.filter((a) => accounts.hasSession(a.id));

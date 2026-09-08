@@ -37,12 +37,37 @@ export function useQuery(path, { params, refetchMs, enabled = true } = {}) {
   useEffect(() => {
     alive.current = true;
     load();
+
+    if (!refetchMs) return () => { alive.current = false; };
+
     // O polling recarrega em silêncio: piscar o esqueleto a cada 10s seria
     // pior que o dado ficar um instante desatualizado.
-    const timer = refetchMs ? setInterval(() => load({ quiet: true }), refetchMs) : null;
+    //
+    // E ele PARA quando a aba sai de vista. Antes não parava: uma aba
+    // esquecida aberta a noite inteira fazia dezenas de milhares de
+    // requisições para uma tela que ninguém estava olhando — o Editor sozinho
+    // consultava a cada 2 segundos. Ao voltar, recarrega na hora, então o
+    // usuário nunca vê dado velho.
+    let timer = null;
+
+    const parar = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const comecar = () => {
+      parar();
+      timer = setInterval(() => load({ quiet: true }), refetchMs);
+    };
+
+    const aoTrocarVisibilidade = () => {
+      if (document.hidden) parar();
+      else { load({ quiet: true }); comecar(); }
+    };
+
+    if (!document.hidden) comecar();
+    document.addEventListener('visibilitychange', aoTrocarVisibilidade);
+
     return () => {
       alive.current = false;
-      if (timer) clearInterval(timer);
+      parar();
+      document.removeEventListener('visibilitychange', aoTrocarVisibilidade);
     };
   }, [load, refetchMs]);
 

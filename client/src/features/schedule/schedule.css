@@ -40,3 +40,30 @@
 }
 .ritmo__atalho:hover { border-color: var(--line-strong); color: var(--text); }
 .ritmo__atalho.is-on { border-color: var(--brand); background: var(--brand-soft); color: #c9bcff; }
+
+
+/* ============================================================
+   LIMITES DE SEGURANÇA
+   ============================================================ */
+
+.lim { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.lim__bloco {
+  padding: 13px 15px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+.lim__cab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+  color: var(--text);
+}
+.lim__cab b { font-size: 13.5px; }
+.lim__bloco p { line-height: 1.55; }
+
+@media (max-width: 860px) {
+  .lim { grid-template-columns: 1fr; }
+}

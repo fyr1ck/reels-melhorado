@@ -88,22 +88,67 @@ export async function runnable() {
   return accounts.filter((a) => hasSession(a.id));
 }
 
-/** Estado do painel para uma conta: fila, ritmo, cobertura e próxima saída. */
-export async function summarize(account) {
-  const [grouped, slots, next] = await Promise.all([
+/**
+ * Estado do painel de VÁRIAS contas de uma vez.
+ *
+ * Existe porque `summarize` de uma conta custa 3 consultas, e a lista de
+ * contas é pedida por todas as telas a cada 20 segundos: com 6 contas eram 20
+ * consultas por requisição, repetidas o dia inteiro. Aqui são 3 no total,
+ * independente de quantas contas houver — o agrupamento é feito em memória.
+ */
+export async function summarizeAll(list) {
+  if (!list.length) return [];
+  const ids = list.map((a) => a.id);
+
+  const [grouped, slots, próximas] = await Promise.all([
     prisma.video.groupBy({
-      by: ['status', 'mediaType'],
-      where: { accountId: account.id },
+      by: ['accountId', 'status', 'mediaType'],
+      where: { accountId: { in: ids } },
       _count: true,
     }),
-    prisma.slot.count({ where: { accountId: account.id, enabled: true } }),
-    prisma.publication.findFirst({
-      where: { accountId: account.id, status: 'SCHEDULED' },
+    prisma.slot.groupBy({
+      by: ['accountId'],
+      where: { accountId: { in: ids }, enabled: true },
+      _count: true,
+    }),
+    prisma.publication.findMany({
+      where: { accountId: { in: ids }, status: 'SCHEDULED' },
       orderBy: { scheduledAt: 'asc' },
-      include: { video: { select: { filename: true } } },
+      select: {
+        accountId: true, scheduledAt: true,
+        video: { select: { filename: true } },
+      },
     }),
   ]);
 
+  const porConta = new Map(ids.map((id) => [id, []]));
+  for (const g of grouped) porConta.get(g.accountId)?.push(g);
+
+  const slotsPorConta = new Map(slots.map((s) => [s.accountId, s._count]));
+
+  // findMany devolve tudo ordenado por data; a primeira de cada conta é a
+  // próxima dela. Um findFirst por conta seria uma consulta a mais por conta.
+  const proximaPorConta = new Map();
+  for (const p of próximas) {
+    if (!proximaPorConta.has(p.accountId)) proximaPorConta.set(p.accountId, p);
+  }
+
+  return list.map((account) => montar({
+    account,
+    grouped: porConta.get(account.id) ?? [],
+    slots: slotsPorConta.get(account.id) ?? 0,
+    next: proximaPorConta.get(account.id) ?? null,
+  }));
+}
+
+/** Estado do painel para UMA conta. Prefira summarizeAll para listas. */
+export async function summarize(account) {
+  const [resumo] = await summarizeAll([account]);
+  return resumo;
+}
+
+/** Monta o resumo a partir dos dados já buscados. Sem I/O. */
+function montar({ account, grouped, slots, next }) {
   const open = (mediaType) =>
     grouped
       .filter((g) => g.mediaType === mediaType && OPEN_STATUSES.includes(g.status))
