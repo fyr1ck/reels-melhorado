@@ -99,6 +99,17 @@ router.get('/diagnostico', wrap(async (req, res) => {
   res.json(await whatsapp.client.diagnostico());
 }));
 
+/**
+ * GET /conversa — os últimos balões, com a direção de cada um.
+ *
+ * É o que mostra, de fora, se o bot está lendo as próprias mensagens.
+ */
+router.get('/conversa', wrap(async (req, res) => {
+  const s = await prisma.settings.findUnique({ where: { id: 1 } });
+  if (!s?.whatsappNumber) throw new ValidationError('Nenhum número configurado.');
+  res.json(await whatsapp.client.espiarConversa(s.whatsappNumber));
+}));
+
 /** Manda uma mensagem de teste para o número configurado. */
 router.post('/test', wrap(async (req, res) => {
   const s = await prisma.settings.findUnique({ where: { id: 1 } });

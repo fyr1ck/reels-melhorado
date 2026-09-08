@@ -46,8 +46,12 @@ const SELETORES = {
     'div[contenteditable="true"][data-tab="6"]',
     'footer div[contenteditable="true"]',
   ],
-  // Balões de mensagem recebida.
-  recebidas: ['div.message-in', 'div[data-testid="msg-container"]'],
+  // Balões de mensagem RECEBIDA. `div[data-testid="msg-container"]` esteve
+  // nesta lista e era um erro grave: ele casa com mensagem enviada TAMBÉM.
+  // O bot lia as próprias respostas, não as reconhecia como comando, respondia
+  // "não entendi", lia essa resposta, e repetia — um loop de auto-resposta que
+  // enche a conversa do usuário a cada volta do laço.
+  recebidas: ['div.message-in'],
   // Caixas de diálogo que o WhatsApp abre por cima da conversa.
   dialogo: ['div[role="dialog"][aria-modal="true"]', 'div[data-animate-modal-body="true"]'],
 };
@@ -161,6 +165,28 @@ export async function verificarSaude() {
     return false;
   }
   return true; // ainda em dúvida: pode ser carregamento
+}
+
+/**
+ * Fila de operações sobre a página.
+ *
+ * Há dois donos do navegador ao mesmo tempo: o laço que lê a conversa a cada 8
+ * segundos e qualquer envio disparado pelo painel. Os dois chamam
+ * `abrirConversa`, que navega — e duas navegações simultâneas na mesma aba
+ * fazem uma abortar a outra. O sintoma era intermitente e enganoso: "não
+ * consegui abrir a conversa" numa operação que estava perfeitamente correta.
+ *
+ * Encadear as operações numa promessa só resolve sem `setInterval` de espera
+ * nem sinalização manual.
+ */
+let fila = Promise.resolve();
+
+function emFila(fn) {
+  const proxima = fila.then(fn, fn);
+  // A fila não pode morrer numa rejeição: o erro vai para quem chamou, e a
+  // corrente segue viva para a próxima operação.
+  fila = proxima.catch(() => {});
+  return proxima;
 }
 
 /** O primeiro seletor da lista que existir na página. */
@@ -408,7 +434,10 @@ async function abrirConversa(numero) {
 /** Manda uma mensagem. Quebra de linha vira Shift+Enter, não envio. */
 export async function enviar(numero, texto) {
   if (!conectado()) throw new ConflictError('WhatsApp não está conectado.');
+  return emFila(() => enviarAgora(numero, texto));
+}
 
+async function enviarAgora(numero, texto) {
   const campo = await abrirConversa(numero);
   await campo.click({ timeout: 15_000 });
 
@@ -423,28 +452,113 @@ export async function enviar(numero, texto) {
 }
 
 /**
+ * Lê a conversa e devolve as linhas com a DIREÇÃO de cada uma.
+ *
+ * Descobrir a direção foi o ponto do bug de flood. Esta versão do WhatsApp Web
+ * não tem `.message-in` / `.message-out`, e o `data-id` das linhas vem sem o
+ * prefixo `true_`/`false_` — os dois sinais que a implementação anterior
+ * usava. Ela caía no seletor que pegava TUDO, o bot lia as próprias respostas,
+ * não as reconhecia como comando, respondia "não entendi", lia essa resposta,
+ * e repetia a cada 8 segundos.
+ *
+ * O que existe de verdade, e é o que se usa aqui:
+ *
+ * 1. `data-pre-plain-text` = "[hora, data] Nome: " — o nome de quem enviou.
+ * 2. Os ícones `tail-out` / `tail-in`, a cauda do balão. Só aparecem na
+ *    PRIMEIRA mensagem de uma sequência do mesmo remetente.
+ *
+ * A combinação se autocalibra: a cauda `tail-out` revela qual nome é o da
+ * própria conta, e daí em diante o nome basta. Sem nome nem cauda (avisos do
+ * sistema, banners), a linha fica sem direção e é descartada — nunca tratada
+ * como comando.
+ */
+function extrairLinhas(pagina) {
+  return pagina.evaluate(() => {
+    const linhas = [...document.querySelectorAll('div[role="row"]')];
+
+    const nomeDe = (linha) => {
+      const pre = linha.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text');
+      if (!pre) return null;
+      const m = /\]\s*([^:]+):\s*$/.exec(pre);
+      return m ? m[1].trim() : null;
+    };
+    const temIcone = (linha, nome) => !!linha.querySelector(`[data-icon="${nome}"]`);
+
+    // Qual nome é o da própria conta: o da primeira linha com cauda de saída.
+    let meuNome = null;
+    for (const l of linhas) {
+      if (temIcone(l, 'tail-out')) {
+        meuNome = nomeDe(l);
+        if (meuNome) break;
+      }
+    }
+
+    // A cauda marca o início de cada bloco; as linhas seguintes herdam a
+    // direção dele até a próxima cauda.
+    let blocoAtual = null;
+
+    return linhas.map((linha) => {
+      if (temIcone(linha, 'tail-out')) blocoAtual = 'ENVIADA';
+      else if (temIcone(linha, 'tail-in')) blocoAtual = 'RECEBIDA';
+
+      const nome = nomeDe(linha);
+      const direcao = (meuNome && nome)
+        ? (nome === meuNome ? 'ENVIADA' : 'RECEBIDA')
+        : blocoAtual;
+
+      const texto = linha.querySelector('span.selectable-text, div.selectable-text')?.innerText
+        ?? '';
+      const id = linha.querySelector('[data-id]')?.getAttribute('data-id')
+        ?? linha.getAttribute('data-id')
+        ?? null;
+
+      return {
+        id: id ?? `${nome ?? '?'}|${texto.trim().slice(0, 60)}`,
+        direcao,
+        remetente: nome,
+        texto: texto.trim(),
+      };
+    }).filter((m) => m.texto);
+  });
+}
+
+/**
  * Últimas mensagens RECEBIDAS na conversa do número.
  *
- * Devolve só o texto; quem decide o que é comando é `commands.js`. Lê as
- * últimas para o laço de leitura poder descartar as que já respondeu.
+ * Devolve só o texto; quem decide o que é comando é `commands.js`.
  */
 export async function lerRecebidas(numero, { quantas = 8 } = {}) {
   if (!conectado()) return [];
 
-  await abrirConversa(numero);
+  return emFila(async () => {
+    await abrirConversa(numero);
+    const linhas = await extrairLinhas(pagina);
 
-  const seletor = SELETORES.recebidas.join(', ');
-  return pagina.evaluate(({ sel, n }) => {
-    const baloes = [...document.querySelectorAll(sel)].slice(-n);
-    return baloes.map((b) => {
-      const texto = b.querySelector('span.selectable-text, div.selectable-text')?.innerText
-        ?? b.innerText ?? '';
-      // O id do balão é estável dentro da sessão e serve para não responder
-      // duas vezes a mesma mensagem.
-      const id = b.getAttribute('data-id')
-        ?? b.closest('[data-id]')?.getAttribute('data-id')
-        ?? texto;
-      return { id, texto: texto.trim() };
-    }).filter((m) => m.texto);
-  }, { sel: seletor, n: quantas });
+    return linhas
+      .filter((m) => m.direcao === 'RECEBIDA')
+      .slice(-quantas)
+      .map(({ id, texto }) => ({ id, texto }));
+  });
+}
+
+/**
+ * O que há na conversa agora, com a direção de cada linha.
+ *
+ * Usa o MESMO leitor de `lerRecebidas` de propósito: um diagnóstico com lógica
+ * própria mostraria uma realidade que o bot não vê, e foi exatamente essa
+ * diferença que escondeu o loop de auto-resposta.
+ */
+export async function espiarConversa(numero, { quantas = 14 } = {}) {
+  if (!conectado()) return { erro: 'WhatsApp não está conectado.' };
+
+  const linhas = await emFila(async () => {
+    await abrirConversa(numero);
+    return extrairLinhas(pagina);
+  });
+
+  return linhas.slice(-quantas).map((m) => ({
+    direcao: m.direcao ?? '(sem direção — ignorada)',
+    remetente: m.remetente,
+    texto: m.texto.replace(/\s+/g, ' ').slice(0, 60),
+  }));
 }

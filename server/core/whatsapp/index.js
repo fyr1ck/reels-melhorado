@@ -26,6 +26,22 @@ let timer = null;
 let ocupado = false;
 const jaRespondidas = new Set();
 
+/**
+ * Achata uma mensagem de log numa linha só.
+ *
+ * Erro de servidor traz stack trace e, quando vem do terminal, código de cor
+ * ANSI. Jogado cru no WhatsApp isso quebra o itálico no meio e enche a tela de
+ * lixo — o "Call log:" do Playwright sozinho tem dezenas de linhas.
+ */
+function umaLinha(texto, limite = 120) {
+  return String(texto ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, limite) || 'sem detalhe';
+}
+
 /** Formata data/hora no fuso local, curto — é para ler no celular. */
 const hora = (d) => new Date(d).toLocaleString('pt-BR', {
   day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -116,7 +132,7 @@ async function respostaErros() {
   if (!erros.length) return '✅ Nenhuma falha registrada.';
 
   return ['*Últimas falhas*', '', ...erros.map(
-    (e) => `• ${hora(e.createdAt)} — ${e.action}\n  _${(e.message ?? '').slice(0, 120)}_`,
+    (e) => `• ${hora(e.createdAt)} — ${e.action}\n  _${umaLinha(e.message)}_`,
   )].join('\n');
 }
 
@@ -217,7 +233,25 @@ async function verificar() {
       return;
     }
 
-    for (const m of recebidas) {
+    // Só o que vem DEPOIS da última mensagem conhecida conta como nova.
+    //
+    // Conferir apenas "não está no conjunto" não bastava: o WhatsApp carrega
+    // histórico enquanto a conversa abre, e mensagens ANTIGAS que aparecem
+    // depois eram tratadas como recém-chegadas — o bot respondia de novo a um
+    // "menu" de minutos atrás, uma vez a cada reinício do servidor.
+    let ultimoConhecido = -1;
+    for (let i = recebidas.length - 1; i >= 0; i--) {
+      if (jaRespondidas.has(recebidas[i].id)) { ultimoConhecido = i; break; }
+    }
+
+    // Nenhuma conhecida na janela lida: a conversa rolou longe do que vimos.
+    // Marcar sem responder é a escolha segura — responder a tudo seria o flood.
+    if (ultimoConhecido === -1) {
+      for (const m of recebidas) jaRespondidas.add(m.id);
+      return;
+    }
+
+    for (const m of recebidas.slice(ultimoConhecido + 1)) {
       if (jaRespondidas.has(m.id)) continue;
       jaRespondidas.add(m.id);
 
