@@ -22,6 +22,19 @@ const ABAS = [
 
 const TOM = { PENDING: 'muted', SCHEDULED: 'brand', PUBLISHING: 'warn', PUBLISHED: 'ok', FAILED: 'danger' };
 
+/**
+ * Primeira linha da legenda, curta.
+ *
+ * Legenda costuma ter várias linhas e dezenas de hashtags; jogá-la inteira no
+ * cartão empurraria a lista toda para baixo.
+ */
+// 42 e nao 60: caractere japones ou emoji ocupa o dobro da largura, e a
+// legenda vazava para tres linhas no cartao.
+const resumir = (texto, max = 42) => {
+  const limpa = texto.replace(/\s+/g, ' ').trim();
+  return limpa.length > max ? `${limpa.slice(0, max)}…` : limpa;
+};
+
 export default function Queue() {
   const { accountId, account, accounts, reload: reloadAccounts } = useAccount();
   const toast = useToast();
@@ -234,6 +247,26 @@ export default function Queue() {
    * A lista muda na tela ANTES da resposta do servidor (`ordem`) — arrastar e
    * esperar meio segundo para o item pular para o lugar parece travado.
    */
+  /**
+   * O que um vídeo sem legenda própria vai realmente usar.
+   *
+   * A frase antiga dizia "vai usar a legenda padrão da conta, se houver" — e o
+   * "se houver" deixava a dúvida de pé justamente para quem estava olhando o
+   * cartão para tirar a dúvida. Aqui a resposta é o estado de verdade: o que a
+   * conta tem, o que as Configurações têm, ou que vai sair sem legenda nenhuma.
+   */
+  const legendaHerdada = (() => {
+    const daConta = account?.fallbackCaption?.trim();
+    if (daConta) {
+      return `Sem legenda própria — vai usar a da conta: "${resumir(daConta)}"`;
+    }
+    const geral = settings?.defaultCaption?.trim();
+    if (geral) {
+      return `Sem legenda própria — vai usar a geral de Configurações: "${resumir(geral)}"`;
+    }
+    return 'Sem legenda — e nem a conta nem as Configurações têm uma padrão. Vai ao ar sem texto.';
+  })();
+
   const lista = ordem ?? visiveis;
 
   // Arrastar só faz sentido na fila de espera: a ordem de quem já publicou não
@@ -613,7 +646,7 @@ export default function Queue() {
                   </div>
                 ) : (
                   <p className={`vid__cap${v.caption ? '' : ' is-empty'}`}>
-                    {v.caption || 'Sem legenda — vai usar a legenda padrão da conta, se houver.'}
+                    {v.caption || legendaHerdada}
                   </p>
                 )}
               </div>

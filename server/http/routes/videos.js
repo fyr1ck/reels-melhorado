@@ -290,6 +290,8 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
   }
   accountsCore.assertConnected(video.account);
 
+  const iniciadaEm = new Date();
+
   await prisma.video.update({ where: { id: video.id }, data: { status: VIDEO_STATUS.PUBLISHING } });
   await logger.info({
     action: 'PUBLICACAO_MANUAL', accountId: video.accountId, videoName: video.filename,
@@ -307,10 +309,33 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
     });
 
     const moved = moveTo(video.filepath, config.paths.published);
+    const publishedAt = new Date();
+
     await prisma.video.update({
       where: { id: video.id },
-      data: { status: VIDEO_STATUS.PUBLISHED, publishedAt: new Date(), filepath: moved },
+      data: { status: VIDEO_STATUS.PUBLISHED, publishedAt, filepath: moved },
     });
+
+    // Registra no histórico, como qualquer publicação.
+    //
+    // Sem isto o vídeo ficava PUBLISHED e a tabela de publicações vazia: o
+    // painel dizia "0 publicados hoje" depois de publicar, o calendário não
+    // mostrava nada e o `status` do WhatsApp contava zero. O registro só é
+    // criado no SUCESSO — a falha manual devolve o vídeo à fila de propósito
+    // (é um teste), e uma linha FAILED aqui sujaria a lista de falhas de
+    // verdade.
+    await prisma.publication.create({
+      data: {
+        accountId: video.accountId,
+        videoId: video.id,
+        scheduledAt: iniciadaEm,
+        publishedAt,
+        status: VIDEO_STATUS.PUBLISHED,
+        attempts: 1,
+        durationMs: result.durationMs,
+      },
+    });
+
     await logger.success({
       action: 'PUBLICACAO_MANUAL_OK', accountId: video.accountId,
       videoName: video.filename, durationMs: result.durationMs,

@@ -20,6 +20,42 @@ import { VIDEO_STATUS, BATCH_STATUS } from './lib/enums.js';
  * publicado e ainda desencontra os números do painel. Na subida, o que estava
  * em voo volta para a fila.
  */
+/**
+ * Cria o registro de publicação que faltou em vídeos já publicados.
+ *
+ * A publicação manual ("Publicar agora") atualizava o vídeo mas não gravava
+ * nada em Publication. O efeito era um painel que mentia depois de funcionar:
+ * o vídeo ia ao ar, e mesmo assim o Dashboard dizia "0 publicados hoje", o
+ * calendário ficava vazio e o `status` do WhatsApp contava zero.
+ *
+ * O caminho novo já grava. Isto conserta o que ficou para trás, e é
+ * idempotente: rodar de novo não cria nada.
+ */
+async function repararHistorico() {
+  const orfaos = await prisma.video.findMany({
+    where: {
+      status: VIDEO_STATUS.PUBLISHED,
+      publishedAt: { not: null },
+      publications: { none: {} },
+    },
+    select: { id: true, accountId: true, publishedAt: true },
+  });
+  if (!orfaos.length) return;
+
+  await prisma.publication.createMany({
+    data: orfaos.map((v) => ({
+      accountId: v.accountId,
+      videoId: v.id,
+      scheduledAt: v.publishedAt,
+      publishedAt: v.publishedAt,
+      status: VIDEO_STATUS.PUBLISHED,
+      attempts: 1,
+    })),
+  });
+
+  console.log(`↻ ${orfaos.length} publicação(ões) sem registro foram recuperadas para o histórico.`);
+}
+
 async function recover() {
   const videos = await prisma.video.updateMany({
     where: { status: VIDEO_STATUS.PUBLISHING },
@@ -33,6 +69,8 @@ async function recover() {
   if (videos.count) {
     console.log(`↻ ${videos.count} vídeo(s) interrompidos voltaram para a fila.`);
   }
+
+  await repararHistorico();
 
   // Mesma situação nos lotes do editor: o progresso vive em memória, então um
   // lote marcado RUNNING depois de um reinício é órfão — não há trabalhador
