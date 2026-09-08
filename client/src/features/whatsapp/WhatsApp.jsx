@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   MessageCircle, QrCode, Power, Smartphone, Send, Terminal,
-  ShieldCheck, LogOut, RefreshCw, AlertTriangle,
+  ShieldCheck, LogOut, RefreshCw, AlertTriangle, EyeOff,
 } from 'lucide-react';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useToast } from '../../hooks/useToast.jsx';
@@ -103,6 +103,11 @@ export default function WhatsApp() {
           Receba os avisos no celular e comande o painel de onde estiver. Conecta lendo um QR,
           igual ao WhatsApp Web — a sessão fica nesta máquina.
         </p>
+        <p className="wa-papeis">
+          <b>Dois números, papéis diferentes.</b> Quem escaneia o QR é o <b>telefone do bot</b> —
+          pode ser um chip só para isso. O número abaixo é o <b>seu</b>: é para ele que os avisos
+          vão, e é só dele que os comandos são aceitos.
+        </p>
       </div>
 
       <Card
@@ -121,8 +126,8 @@ export default function WhatsApp() {
 
         <Field
           className="mt"
-          label={<><Smartphone size={12} /> Seu número, com código do país</>}
-          hint="É o ÚNICO número atendido: mensagem de qualquer outra conversa é ignorada, e os avisos só vão para ele."
+          label={<><Smartphone size={12} /> Seu número — o dono, quem recebe e comanda</>}
+          hint="Com código do país. NÃO é o número que escaneia o QR: aquele é o telefone do bot, e pode ser outro. Este é o único atendido — mensagem de qualquer outra conversa é ignorada."
         >
           <Input
             value={numero}
@@ -133,6 +138,18 @@ export default function WhatsApp() {
               .catch((err) => toast.error(err.message))}
           />
         </Field>
+
+        <Checkbox
+          className="mt"
+          label={<><EyeOff size={12} /> Rodar sem abrir janela do navegador</>}
+          hint="Ligado, funciona como um bot em segundo plano — nada aparece na tela. O QR continua vindo para cá do mesmo jeito. Desligue só para diagnóstico, se algo parar de conectar."
+          checked={data?.semJanela ?? true}
+          onChange={(e) => salvar.run({ headless: e.target.checked })
+            .then(() => toast.success(e.target.checked
+              ? 'Sem janela. Vale na próxima conexão.'
+              : 'Com janela. Vale na próxima conexão.'))
+            .catch((err) => toast.error(err.message))}
+        />
 
         {data?.ultimoErro && (
           <div className="mt">
@@ -177,7 +194,7 @@ export default function WhatsApp() {
                 : <div className="wa-qr__espera"><RefreshCw size={20} className="spin" /></div>}
             </div>
             <ol className="wa-qr__passos">
-              <li>Abra o <b>WhatsApp</b> no celular</li>
+              <li>Abra o <b>WhatsApp do telefone do bot</b> (o chip que vai enviar)</li>
               <li>Toque em <b>Configurações</b> → <b>Dispositivos conectados</b></li>
               <li>Toque em <b>Conectar dispositivo</b></li>
               <li>Aponte a câmera para este código</li>
@@ -185,7 +202,9 @@ export default function WhatsApp() {
           </div>
           <p className="faint mt">
             O código expira sozinho a cada ~20 segundos e é trocado automaticamente — se ele piscar,
-            é isso. Uma janela do Chromium também abriu; pode deixá-la minimizada depois de conectar.
+            é isso. {data?.semJanela
+              ? 'Nada abre na sua tela: o navegador roda em segundo plano e o código vem para cá.'
+              : 'Uma janela do Chromium também abriu — pode minimizá-la depois de conectar.'}
           </p>
         </Card>
       )}
@@ -206,8 +225,9 @@ export default function WhatsApp() {
 
         <div className="mt">
           <Banner tone="brand" icon={ShieldCheck}>
-            Só <b>este número</b> é atendido, e a lista de comandos é fechada: nada aqui apaga
-            vídeo, remove conta ou mexe em arquivo. Pausar e retomar dão para desfazer; apagar não.
+            Só o <b>número do dono</b> é atendido — nem o próprio telefone do bot dá comandos. E a
+            lista é fechada: nada aqui apaga vídeo, remove conta ou mexe em arquivo. Pausar e
+            retomar dão para desfazer; apagar não.
           </Banner>
         </div>
 

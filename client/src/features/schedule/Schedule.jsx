@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Clock, Plus, Trash2, Power, Repeat, ShieldCheck, Moon, Flame, Gauge } from 'lucide-react';
+import {
+  Clock, Plus, Trash2, Power, Repeat, ShieldCheck, Moon, Flame, Gauge, AlertTriangle,
+} from 'lucide-react';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
@@ -102,11 +104,66 @@ export default function Schedule() {
   async function trocarModo(mode) {
     await api.patch(`/accounts/${accountId}`, { scheduleMode: mode });
     await reloadAccounts();
-    toast.success(mode === 'TIMES' ? 'Modo horários fixos.' : 'Modo intervalo.');
+    toast.success({
+      TIMES: 'Modo horários fixos.',
+      INTERVAL: 'Modo intervalo.',
+      WINDOW: 'Modo volume diário.',
+    }[mode]);
   }
+
+  const [janela, setJanela] = useState({ postsPerDay: 20, windowStart: '07:00', windowEnd: '23:00' });
+
+  useEffect(() => {
+    if (!account) return;
+    setJanela({
+      postsPerDay: account.postsPerDay ?? 20,
+      windowStart: account.windowStart ?? '07:00',
+      windowEnd: account.windowEnd ?? '23:00',
+    });
+  }, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function salvarJanela(proximo) {
+    const j = { ...janela, ...proximo };
+    setJanela(j);
+    try {
+      await api.patch(`/accounts/${accountId}`, j);
+      await reloadAccounts();
+      toast.success('Grade refeita.');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  /**
+   * O intervalo que sai da janela, calculado na tela.
+   *
+   * Ver "um a cada 13 min" ANTES de salvar é o que impede pedir 70 por dia sem
+   * perceber o que isso significa na prática.
+   */
+  const intervaloDaJanela = (() => {
+    const min = (t) => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(t ?? '');
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    const i = min(janela.windowStart);
+    const f = min(janela.windowEnd);
+    if (i === null || f === null || i === f) return null;
+
+    const duracao = f > i ? f - i : 1440 - i + f;
+    const passo = duracao / Math.max(1, janela.postsPerDay);
+    return {
+      passo,
+      texto: passo >= 60
+        ? `${(passo / 60).toFixed(passo % 60 === 0 ? 0 : 1)} h`
+        : `${Math.round(passo)} min`,
+      horas: (duracao / 60).toFixed(duracao % 60 === 0 ? 0 : 1),
+    };
+  })();
 
   const ativos = slots?.filter((s) => s.enabled).length ?? 0;
   const modoIntervalo = account?.scheduleMode === 'INTERVAL';
+  const modoJanela = account?.scheduleMode === 'WINDOW';
+  const modoHorarios = !modoIntervalo && !modoJanela;
   const maximo = ritmo.unidade === 'h' ? 24 : 1440;
 
   return (
@@ -122,11 +179,20 @@ export default function Schedule() {
         <div className="ritmo__modos">
           <button
             type="button"
-            className={`ritmo__modo${!modoIntervalo ? ' is-on' : ''}`}
+            className={`ritmo__modo${modoHorarios ? ' is-on' : ''}`}
             onClick={() => trocarModo('TIMES')}
           >
             <b>Horários fixos</b>
             <span>Ex: todo dia às 08:00, 12:00 e 18:00. Cadastre abaixo.</span>
+          </button>
+
+          <button
+            type="button"
+            className={`ritmo__modo${modoJanela ? ' is-on' : ''}`}
+            onClick={() => trocarModo('WINDOW')}
+          >
+            <b>Volume por dia</b>
+            <span>Ex: 70 vídeos por dia, das 7h às 23h, divididos por igual.</span>
           </button>
 
           <button
@@ -138,6 +204,81 @@ export default function Schedule() {
             <span>Ex: a cada 20 minutos, ou a cada 2 horas, sem parar.</span>
           </button>
         </div>
+
+        {modoJanela && (
+          <>
+            <div className="jan mt">
+              <Field label="Vídeos por dia">
+                <Input
+                  type="number" min={1} max={200}
+                  value={janela.postsPerDay}
+                  onChange={(e) => setJanela((j) => ({ ...j, postsPerDay: Number(e.target.value) || 1 }))}
+                  onBlur={() => salvarJanela({ postsPerDay: Math.min(200, Math.max(1, janela.postsPerDay)) })}
+                />
+              </Field>
+              <Field label="Começando às">
+                <Input
+                  type="time" value={janela.windowStart}
+                  onChange={(e) => setJanela((j) => ({ ...j, windowStart: e.target.value }))}
+                  onBlur={() => salvarJanela({})}
+                />
+              </Field>
+              <Field label="Até às">
+                <Input
+                  type="time" value={janela.windowEnd}
+                  onChange={(e) => setJanela((j) => ({ ...j, windowEnd: e.target.value }))}
+                  onBlur={() => salvarJanela({})}
+                />
+              </Field>
+            </div>
+
+            <div className="jan__atalhos">
+              {[
+                { n: 20, de: '08:00', ate: '22:00', rotulo: '20/dia · 8h–22h' },
+                { n: 50, de: '07:00', ate: '23:00', rotulo: '50/dia · 7h–23h' },
+                { n: 70, de: '07:00', ate: '23:00', rotulo: '70/dia · 7h–23h' },
+              ].map((p) => (
+                <button
+                  key={p.rotulo}
+                  type="button"
+                  className={`ritmo__atalho${
+                    janela.postsPerDay === p.n && janela.windowStart === p.de && janela.windowEnd === p.ate
+                      ? ' is-on' : ''}`}
+                  onClick={() => salvarJanela({ postsPerDay: p.n, windowStart: p.de, windowEnd: p.ate })}
+                >
+                  {p.rotulo}
+                </button>
+              ))}
+            </div>
+
+            {intervaloDaJanela ? (
+              <p className="faint mt">
+                Dá <b>um vídeo a cada {intervaloDaJanela.texto}</b> dentro de uma faixa de{' '}
+                {intervaloDaJanela.horas} horas. O primeiro sai às {janela.windowStart} e o último
+                um intervalo antes das {janela.windowEnd} — assim o espaço até o primeiro de amanhã
+                é o mesmo.
+              </p>
+            ) : (
+              <p className="faint mt">Início e fim não podem ser iguais.</p>
+            )}
+
+            {intervaloDaJanela && intervaloDaJanela.passo < 10 && (
+              <div className="mt">
+                <Banner tone="warn" icon={AlertTriangle}>
+                  Um post a cada {intervaloDaJanela.texto} é um ritmo que o Instagram nota. Se a
+                  conta for nova, ligue o <b>aquecimento</b> abaixo — ele segura o volume nos
+                  primeiros dias e vai soltando.
+                </Banner>
+              </div>
+            )}
+
+            <p className="faint mt">
+              Os <b>limites de segurança</b> abaixo valem por cima disto: um teto diário menor que o
+              volume pedido corta o excedente, e a janela de silêncio remove os horários que caírem
+              dentro dela.
+            </p>
+          </>
+        )}
 
         {modoIntervalo && (
           <>
@@ -301,7 +442,15 @@ export default function Schedule() {
         </div>
       </Card>
 
-      <Card title={`Horários cadastrados (${ativos} ativos)`} icon={Clock} className="mt">
+      <Card
+        title={`Horários cadastrados (${ativos} ativos)`}
+        icon={Clock}
+        className="mt"
+        tone={modoHorarios ? undefined : 'muted'}
+        action={!modoHorarios && (
+          <Badge tone="muted">não usados no modo atual</Badge>
+        )}
+      >
         <form className="slot-add" onSubmit={(e) => { e.preventDefault(); criar.run().catch((err) => toast.error(err.message)); }}>
           <Field label="Novo horário">
             <Input type="time" value={novo} onChange={(e) => setNovo(e.target.value)} />

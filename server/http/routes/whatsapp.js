@@ -14,6 +14,7 @@ router.get('/', wrap(async (req, res) => {
   res.json({
     habilitado: !!s?.whatsappEnabled,
     numero: s?.whatsappNumber ?? null,
+    semJanela: s?.whatsappHeadless !== false,
     ...whatsapp.client.situacao(),
     comandos: whatsapp.COMANDOS.map((c) => ({ nome: c.nome, descricao: c.descricao })),
   });
@@ -24,6 +25,9 @@ router.patch('/', wrap(async (req, res) => {
 
   if (req.body.enabled !== undefined) {
     data.whatsappEnabled = v.bool(req.body.enabled, { field: 'WhatsApp' });
+  }
+  if (req.body.headless !== undefined) {
+    data.whatsappHeadless = v.bool(req.body.headless, { field: 'Sem janela' });
   }
 
   if (req.body.numero !== undefined) {
@@ -72,7 +76,10 @@ router.post('/connect', wrap(async (req, res) => {
   if (!s?.whatsappEnabled) throw new ValidationError('Ligue o WhatsApp antes de conectar.');
   if (!s.whatsappNumber) throw new ValidationError('Configure o número antes de conectar.');
 
-  whatsapp.conectar().catch(() => { /* o estado fica em situacao() */ });
+  // `mostrarJanela` no corpo força a janela só desta vez, sem mudar a
+  // preferência salva: é o caminho de diagnóstico quando algo não conecta.
+  whatsapp.conectar({ mostrarJanela: req.body?.mostrarJanela === true ? true : undefined })
+    .catch(() => { /* o estado fica em situacao() */ });
   res.json({ iniciando: true, ...whatsapp.client.situacao() });
 }));
 

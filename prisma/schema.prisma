@@ -50,9 +50,17 @@ model Account {
   isDefault Boolean @default(false)
 
   // --- configuração de publicação, por conta ---
-  /// TIMES (horários fixos) | INTERVAL (a cada N minutos)
+  /// TIMES (horários fixos) | INTERVAL (a cada N minutos) | WINDOW (N por dia
+  /// espalhados dentro de uma faixa de horário)
   scheduleMode    String  @default("TIMES")
   intervalMinutes Int     @default(60)
+
+  /// Modo WINDOW: quantos vídeos por dia e entre que horas. É como se pensa o
+  /// volume de verdade — "70 por dia das 7h às 23h" — em vez de cadastrar 70
+  /// horários à mão.
+  postsPerDay Int    @default(20)
+  windowStart String @default("07:00")
+  windowEnd   String @default("23:00")
   /// Sorteia o próximo vídeo em vez de seguir a ordem da fila.
   randomOrder     Boolean @default(false)
 
@@ -431,9 +439,16 @@ model Settings {
   /// Desligado por padrão. Ligado, os avisos vão para o WhatsApp e o número
   /// abaixo pode dar comandos.
   whatsappEnabled Boolean @default(false)
-  /// O ÚNICO número atendido, com código do país (ex: 5516994441788).
+  /// O ÚNICO número atendido — o do DONO, para onde os avisos vão e de quem os
+  /// comandos são aceitos (ex: 5516994441788). É diferente do número que
+  /// escaneia o QR: aquele é o "telefone do bot", e pode ser outro chip.
   /// Mensagem de qualquer outra conversa é ignorada sem resposta.
   whatsappNumber  String?
+
+  /// Roda o navegador do WhatsApp sem janela visível. Ligado por padrão: uma
+  /// aba do Chromium aberta o dia inteiro atrapalha quem usa a máquina, e o QR
+  /// é capturado e mostrado no painel de qualquer jeito.
+  whatsappHeadless Boolean @default(true)
 
   // --- assistente de código (API do Claude) ---
   /// Desligado por padrão: nada sai desta máquina sem alguém ligar.

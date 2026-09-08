@@ -267,8 +267,13 @@ export async function avisar(texto) {
 }
 
 /** Conecta e já começa a escutar. É o que a tela chama. */
-export async function conectar() {
-  const r = await client.conectar();
+export async function conectar({ mostrarJanela } = {}) {
+  const s = await prisma.settings.findUnique({ where: { id: 1 } });
+  // A preferência salva manda; o parâmetro só existe para o botão de
+  // diagnóstico forçar a janela numa conexão específica.
+  const visivel = mostrarJanela ?? (s?.whatsappHeadless === false);
+
+  const r = await client.conectar({ mostrarJanela: visivel });
   if (client.conectado()) {
     iniciarEscuta();
     const numero = await numeroAutorizado();
@@ -299,7 +304,12 @@ export async function retomarNoBoot() {
     // `apenasSessaoSalva` desiste assim que aparece um QR: na subida do
     // servidor não há ninguém olhando para escanear, e insistir deixaria uma
     // janela do Chromium aberta por três minutos sem motivo.
-    await client.conectar({ apenasSessaoSalva: true, timeoutMs: 45_000 });
+    const s = await prisma.settings.findUnique({ where: { id: 1 } });
+    await client.conectar({
+      apenasSessaoSalva: true,
+      timeoutMs: 45_000,
+      mostrarJanela: s?.whatsappHeadless === false,
+    });
     if (client.conectado()) {
       iniciarEscuta();
       return true;

@@ -25,7 +25,7 @@ export const ACCOUNT_STATUS = {
 };
 export const ACCOUNT_STATUSES = Object.values(ACCOUNT_STATUS);
 
-export const SCHEDULE_MODE = { TIMES: 'TIMES', INTERVAL: 'INTERVAL' };
+export const SCHEDULE_MODE = { TIMES: 'TIMES', INTERVAL: 'INTERVAL', WINDOW: 'WINDOW' };
 export const SCHEDULE_MODES = Object.values(SCHEDULE_MODE);
 
 export const IMPORT_MODE = { COPY: 'COPY', MOVE: 'MOVE' };

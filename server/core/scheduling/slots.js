@@ -62,11 +62,96 @@ export function slotWindow(at, jitterMinutes) {
   return { gte: new Date(at.getTime() - span), lte: new Date(at.getTime() + span) };
 }
 
+
+/**
+ * Modo JANELA: N publicações por dia, espalhadas entre dois horários.
+ *
+ * É como se pensa o volume de verdade — "70 vídeos por dia, das 7h às 23h" —
+ * em vez de cadastrar 70 horários à mão ou calcular de cabeça que isso dá um
+ * post a cada 13,7 minutos.
+ *
+ * O espaçamento é uniforme: janela dividida por N. O primeiro sai no início da
+ * janela e o último cai um intervalo ANTES do fim — assim o espaço entre o
+ * último de hoje e o primeiro de amanhã continua sendo o mesmo intervalo, e
+ * não uma pausa longa seguida de dois posts colados na virada.
+ *
+ * A janela pode atravessar a meia-noite ("22:00" a "02:00"): quando o fim é
+ * menor ou igual ao início, ela termina no dia seguinte.
+ *
+ * @param {object} cfg
+ * @param {number} cfg.postsPerDay
+ * @param {string} cfg.windowStart  "HH:mm"
+ * @param {string} cfg.windowEnd    "HH:mm"
+ * @param {number} days             quantos dias gerar
+ * @returns {Date[]} ordenados, sem os que já passaram
+ */
+export function windowOccurrences({ postsPerDay, windowStart, windowEnd }, days, { now = Date.now() } = {}) {
+  const n = Math.max(1, Math.floor(postsPerDay || 0));
+  const inicio = minutosDoDia(windowStart);
+  const fim = minutosDoDia(windowEnd);
+  if (inicio === null || fim === null) return [];
+
+  // Janela que atravessa a meia-noite dura o que falta do dia mais o começo do
+  // seguinte. Sem isto, "22:00 às 02:00" daria duração negativa e nenhum post.
+  const duracao = fim > inicio ? fim - inicio : 1440 - inicio + fim;
+  const passo = duracao / n;
+
+  const out = [];
+  for (let d = 0; d < days; d++) {
+    const base = new Date(now);
+    base.setDate(base.getDate() + d);
+    base.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < n; i++) {
+      const at = new Date(base.getTime() + (inicio + i * passo) * 60_000);
+      // Segundos zerados: a grade fica legível no calendário, e o agendador
+      // compara por minuto.
+      at.setSeconds(0, 0);
+      if (at.getTime() >= now) out.push(at);
+    }
+  }
+
+  return out.sort((a, b) => a - b);
+}
+
+/** Minutos desde a meia-noite de "HH:mm". Null se inválido. */
+export function minutosDoDia(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/**
+ * Texto do ritmo da janela, para o usuário conferir antes de salvar.
+ * "70 por dia, um a cada 13 min".
+ */
+export function describeWindow({ postsPerDay, windowStart, windowEnd }) {
+  const n = Math.max(1, Math.floor(postsPerDay || 0));
+  const inicio = minutosDoDia(windowStart);
+  const fim = minutosDoDia(windowEnd);
+  if (inicio === null || fim === null) return 'janela inválida';
+
+  const duracao = fim > inicio ? fim - inicio : 1440 - inicio + fim;
+  const passo = duracao / n;
+
+  const intervalo = passo >= 60
+    ? `${(passo / 60).toFixed(passo % 60 === 0 ? 0 : 1)} h`
+    : `${Math.round(passo)} min`;
+
+  return `${n} por dia entre ${windowStart} e ${windowEnd} — um a cada ${intervalo}`;
+}
+
 /**
  * Publicações por dia que a configuração produz.
  * Serve para estimar por quantos dias a fila aguenta.
  */
-export function dailyRate({ scheduleMode, intervalMinutes, enabledSlots }) {
+export function dailyRate({ scheduleMode, intervalMinutes, enabledSlots, postsPerDay }) {
+  if (scheduleMode === 'WINDOW') {
+    return Math.max(1, Math.floor(postsPerDay || 0));
+  }
   if (scheduleMode === 'INTERVAL') {
     return 1440 / Math.max(1, intervalMinutes || 60);
   }

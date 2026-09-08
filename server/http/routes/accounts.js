@@ -71,6 +71,19 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.intervalMinutes !== undefined) {
     data.intervalMinutes = v.int(b.intervalMinutes, { field: 'Intervalo', min: 1, max: 1440 });
   }
+  if (b.postsPerDay !== undefined) {
+    data.postsPerDay = v.int(b.postsPerDay, { field: 'Vídeos por dia', min: 1, max: 200 });
+  }
+  if (b.windowStart !== undefined) data.windowStart = v.time(b.windowStart, { field: 'Início da janela' });
+  if (b.windowEnd !== undefined) data.windowEnd = v.time(b.windowEnd, { field: 'Fim da janela' });
+
+  // Janela de duração zero não produz horário nenhum, e a fila ficaria parada
+  // sem explicação. Vale a pena recusar na entrada.
+  const inicioFinal = data.windowStart ?? account.windowStart;
+  const fimFinal = data.windowEnd ?? account.windowEnd;
+  if ((data.windowStart || data.windowEnd) && inicioFinal === fimFinal) {
+    throw new ValidationError('O início e o fim da janela não podem ser iguais.');
+  }
   // --- reciclagem ---
   if (b.recycleEnabled !== undefined) {
     data.recycleEnabled = v.bool(b.recycleEnabled, { field: 'Reciclagem' });

@@ -162,6 +162,7 @@ function montar({ account, grouped, slots, next }) {
   const rate = dailyRate({
     scheduleMode: account.scheduleMode,
     intervalMinutes: account.intervalMinutes,
+    postsPerDay: account.postsPerDay,
     enabledSlots: slots,
   });
 

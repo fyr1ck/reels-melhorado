@@ -48,6 +48,8 @@ const SELETORES = {
   ],
   // Balões de mensagem recebida.
   recebidas: ['div.message-in', 'div[data-testid="msg-container"]'],
+  // Caixas de diálogo que o WhatsApp abre por cima da conversa.
+  dialogo: ['div[role="dialog"][aria-modal="true"]', 'div[data-animate-modal-body="true"]'],
 };
 
 let contexto = null;
@@ -117,12 +119,19 @@ async function primeiro(page, lista, { visivel = false } = {}) {
  * Abre o WhatsApp Web. Se já houver sessão salva, entra direto; senão, captura
  * o QR para a tela mostrar.
  *
- * `headless: false` é proposital e não configurável aqui: o QR precisa ser
- * escaneado, e um navegador invisível na primeira conexão deixaria o usuário
- * esperando por uma janela que nunca aparece. Depois de conectado, a janela
- * pode ficar minimizada.
+ * SEM JANELA por padrão. O QR não precisa de tela visível: ele é um canvas na
+ * página, e a captura é um screenshot desse elemento — que funciona igual em
+ * modo invisível. Uma aba do Chromium aberta o dia inteiro só atrapalharia
+ * quem está usando a máquina.
+ *
+ * `mostrarJanela` existe para diagnóstico: quando o WhatsApp mudar o HTML e o
+ * app parar de conectar, ver a página de verdade é o caminho mais curto.
  */
-export async function conectar({ apenasSessaoSalva = false, timeoutMs = 180_000 } = {}) {
+export async function conectar({
+  apenasSessaoSalva = false,
+  timeoutMs = 180_000,
+  mostrarJanela = false,
+} = {}) {
   if (contexto) return situacao();
 
   estado = 'ABRINDO';
@@ -131,8 +140,14 @@ export async function conectar({ apenasSessaoSalva = false, timeoutMs = 180_000 
 
   try {
     contexto = await chromium.launchPersistentContext(PASTA(), {
-      headless: false,
+      headless: !mostrarJanela,
       viewport: { width: 1100, height: 760 },
+      // O WhatsApp Web recusa navegador que não reconhece. Sem um user agent
+      // de Chrome real, o modo invisível cai numa tela de "atualize seu
+      // navegador" em vez do QR.
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        + ' (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      locale: 'pt-BR',
       args: ['--disable-blink-features=AutomationControlled'],
     });
 
@@ -233,6 +248,38 @@ export async function desconectar({ apagarSessao = false } = {}) {
  * caçar a conversa na lista lateral — a busca por nome erraria com dois
  * contatos parecidos.
  */
+/**
+ * Fecha a caixa de diálogo que o WhatsApp às vezes abre por cima da conversa.
+ *
+ * Ao entrar por `send?phone=`, o WhatsApp pode mostrar um modal — confirmação,
+ * aviso, promoção do app. Ele fica POR CIMA do campo de mensagem e engole o
+ * clique: o sintoma é "Element is not attached to the DOM" ou "intercepts
+ * pointer events", que não diz nada sobre o motivo real.
+ */
+async function fecharDialogo() {
+  const dialogo = await primeiro(pagina, SELETORES.dialogo, { visivel: true });
+  if (!dialogo) return false;
+
+  // Preferência pelo botão do próprio diálogo: Escape fecha alguns, mas em
+  // outros cancela a ação e a conversa não abre.
+  const botao = dialogo.locator('button, div[role="button"]').last();
+  if (await botao.count()) {
+    await botao.click({ timeout: 5000 }).catch(() => {});
+  } else {
+    await pagina.keyboard.press('Escape').catch(() => {});
+  }
+
+  await pagina.waitForTimeout(700);
+  return true;
+}
+
+/**
+ * Abre a conversa de um número e devolve o LOCATOR do campo de mensagem.
+ *
+ * Locator, e não ElementHandle: o WhatsApp Web redesenha a conversa enquanto
+ * carrega, e um handle capturado antes disso aponta para um nó que já saiu do
+ * DOM. O locator resolve o elemento no momento do clique.
+ */
 async function abrirConversa(numero) {
   const alvo = soDigitos(numero);
   if (!alvo) throw new ConflictError('Número de destino não configurado.');
@@ -242,15 +289,26 @@ async function abrirConversa(numero) {
     await pagina.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   }
 
-  const campo = await pagina.waitForSelector(SELETORES.campoMensagem.join(', '), { timeout: 30_000 })
-    .catch(() => null);
+  const campo = pagina.locator(SELETORES.campoMensagem.join(', ')).first();
 
-  if (!campo) {
-    throw new ConflictError(
-      'Não achei a caixa de mensagem. O número pode não ter WhatsApp, ou a interface do WhatsApp Web mudou.',
-    );
+  // Duas voltas: a primeira costuma esbarrar no modal, e fechá-lo redesenha a
+  // conversa — daí a segunda espera pelo campo já sem nada por cima.
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    await fecharDialogo();
+
+    const apareceu = await campo.waitFor({ state: 'visible', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (apareceu && !(await primeiro(pagina, SELETORES.dialogo, { visivel: true }))) {
+      return campo;
+    }
   }
-  return campo;
+
+  throw new ConflictError(
+    'Não consegui abrir a conversa. O número pode não ter WhatsApp, ou a interface do WhatsApp Web mudou '
+    + '— veja GET /api/whatsapp/diagnostico.',
+  );
 }
 
 /** Manda uma mensagem. Quebra de linha vira Shift+Enter, não envio. */
@@ -258,7 +316,7 @@ export async function enviar(numero, texto) {
   if (!conectado()) throw new ConflictError('WhatsApp não está conectado.');
 
   const campo = await abrirConversa(numero);
-  await campo.click();
+  await campo.click({ timeout: 15_000 });
 
   const linhas = String(texto).split('\n');
   for (const [i, linha] of linhas.entries()) {

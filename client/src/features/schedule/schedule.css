@@ -14,7 +14,9 @@
 
 /* Seletor de ritmo — mesmas classes usadas antes no editor de conta, agora
    aqui, que é a tela onde a grade da conta é montada. */
-.ritmo__modos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Três modos lado a lado; empilham quando não cabem. */
+.ritmo__modos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 1000px) { .ritmo__modos { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) { .ritmo__modos { grid-template-columns: 1fr; } }
 
 .ritmo__modo {
@@ -66,4 +68,20 @@
 
 @media (max-width: 860px) {
   .lim { grid-template-columns: 1fr; }
+}
+
+
+/* Modo volume por dia. */
+.jan {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+.jan .ui-field { margin: 0; }
+
+.jan__atalhos { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+
+@media (max-width: 700px) {
+  .jan { grid-template-columns: 1fr; }
 }

@@ -1,8 +1,8 @@
 import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { MEDIA, VIDEO_STATUS, ACCOUNT_STATUS, SCHEDULE_MODE } from '../../lib/enums.js';
-import { applyJitter, slotOccurrences, slotWindow } from './slots.js';
-import { aplicarLimites, chaveDoDia, esperaDaTentativa } from './limits.js';
+import { applyJitter, slotOccurrences, slotWindow, windowOccurrences } from './slots.js';
+import { aplicarLimites, chaveDoDia, esperaDaTentativa, tetoDoDia } from './limits.js';
 import * as accounts from '../accounts/accounts.js';
 import * as logger from '../log.js';
 import { publishReel } from '../publishing/reel.js';
@@ -64,6 +64,9 @@ async function regenerateFor(account, days) {
     });
   }
 
+  if (account.scheduleMode === SCHEDULE_MODE.WINDOW) {
+    return byWindow(account, days);
+  }
   if (account.scheduleMode === SCHEDULE_MODE.INTERVAL) {
     return byInterval(account);
   }
@@ -181,6 +184,71 @@ async function avisarCortes(account, silencio, teto, faltou) {
     action: 'LIMITES_APLICADOS', accountId: account.id,
     message: `Horários descartados: ${partes.join(' e ')}.${faltou ? ' Parte da fila ficou sem horário.' : ''}`,
   });
+}
+
+/**
+ * Modo JANELA: N publicações por dia espalhadas entre dois horários.
+ *
+ * Diferente do modo INTERVAL, que despeja a fila inteira a partir de agora e
+ * atravessa a madrugada: aqui o volume é POR DIA e sempre dentro da faixa. Com
+ * 70 vídeos por dia das 7h às 23h, sai um a cada 13 minutos — e nada de
+ * madrugada.
+ *
+ * Os limites de segurança (teto diário, silêncio, aquecimento) continuam
+ * valendo por cima: um teto de 30 corta uma janela pedida de 70, e é o teto
+ * que ganha. O log diz quantos foram descartados, para a diferença entre o
+ * pedido e o agendado não virar mistério.
+ */
+async function byWindow(account, days) {
+  const videos = await prisma.video.findMany({
+    where: { accountId: account.id, status: VIDEO_STATUS.PENDING, mediaType: MEDIA.REEL },
+    orderBy: { sortOrder: 'asc' },
+  });
+  if (!videos.length) return;
+
+  const now = Date.now();
+  const regras = regrasDe(account);
+
+  // O teto do dia entra no CÁLCULO, não como corte depois.
+  //
+  // Cortar depois pegava os primeiros N horários e largava o resto do dia
+  // vazio: com teto 30 numa janela de 07h às 23h, os 30 posts saíam todos
+  // até as 13h37 e a tarde inteira ficava sem nada. Gerando já com o número
+  // certo, os 30 se espalham pelas 16 horas — que é o ponto de ter uma janela.
+  const brutos = [];
+  for (let d = 0; d < days; d++) {
+    const dia = new Date(now);
+    dia.setDate(dia.getDate() + d);
+
+    const limite = tetoDoDia(dia, regras);
+    const quantos = limite === null
+      ? account.postsPerDay
+      : Math.min(account.postsPerDay, limite);
+    if (quantos < 1) continue;
+
+    brutos.push(...windowOccurrences(
+      { ...account, postsPerDay: quantos },
+      1,
+      // `now` do dia: para os dias futuros o corte do passado não se aplica,
+      // e passar o agora real descartaria a manhã inteira de amanhã.
+      { now: d === 0 ? now : dia.setHours(0, 0, 0, 0) },
+    ));
+  }
+
+  // Ainda passa pelos limites: a janela de silêncio pode cortar horários que
+  // caiam dentro dela, e o que já foi publicado hoje consome o teto.
+  const { mantidos, silencio, teto } = aplicarLimites(
+    brutos, regras, { jaNoDia: await publicadasPorDia(account.id) },
+  );
+  await avisarCortes(account, silencio, teto, mantidos.length < videos.length);
+
+  // A fila manda: sobrando horário, os últimos ficam sem uso; sobrando vídeo,
+  // os últimos esperam a regeração de amanhã.
+  for (const [i, video] of videos.entries()) {
+    const at = mantidos[i];
+    if (!at) break;
+    await link(account, video, at);
+  }
 }
 
 /**
