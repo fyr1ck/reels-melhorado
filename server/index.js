@@ -4,6 +4,7 @@ import { prisma } from './db/prisma.js';
 import { ensureDirs } from './lib/files.js';
 import * as duplicates from './core/queue/duplicates.js';
 import * as assistant from './core/assistant/index.js';
+import * as whatsapp from './core/whatsapp/index.js';
 import * as accounts from './core/accounts/accounts.js';
 import * as scheduler from './core/scheduling/scheduler.js';
 import * as watch from './core/watch/watch.js';
@@ -72,6 +73,13 @@ async function bootstrap() {
   // cada conta, avaliado a cada tick. Uma flag global não responde por todas.
   scheduler.start();
   watch.start();
+
+  // Reabre a sessão salva do WhatsApp sem pedir QR de novo. Em segundo plano:
+  // abrir um navegador leva segundos, e a API não pode esperar por isso para
+  // começar a atender.
+  whatsapp.retomarNoBoot()
+    .then((ok) => ok && console.log('  WhatsApp reconectado.'))
+    .catch(() => { /* o painel mostra o estado e oferece o QR */ });
   storage.startAutoClean();
 
   const app = createApp();

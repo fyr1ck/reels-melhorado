@@ -13,6 +13,7 @@ import publications from './http/routes/publications.js';
 import logs from './http/routes/logs.js';
 import settings from './http/routes/settings.js';
 import assistantRoutes from './http/routes/assistant.js';
+import whatsappRoutes from './http/routes/whatsapp.js';
 import editor from './http/routes/editor.js';
 
 /**
@@ -40,6 +41,7 @@ export function createApp() {
   app.use('/api/logs', logs);
   app.use('/api/settings', settings);
   app.use('/api/assistant', assistantRoutes);
+  app.use('/api/whatsapp', whatsappRoutes);
   app.use('/api/editor', editor);
 
   app.use('/api/covers', express.static(config.paths.covers));

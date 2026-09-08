@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma.js';
+import * as whatsapp from './whatsapp/index.js';
 
 /**
  * Avisos fora do painel.
@@ -7,10 +8,10 @@ import { prisma } from '../db/prisma.js';
  * dentro do app: se a conta pausasse às 3h da manhã, o usuário descobria
  * quando abrisse o painel — com a fila parada desde então.
  *
- * Dois destinos, ambos opcionais:
+ * Três destinos, todos opcionais:
  *
- * - TELEGRAM: o mais direto para quem opera do celular. Precisa do token de um
- *   bot (criado no @BotFather) e do id do chat.
+ * - WHATSAPP: a mesma conversa por onde o usuário dá comandos ao painel.
+ * - TELEGRAM: precisa do token de um bot (criado no @BotFather) e do id do chat.
  * - WEBHOOK: um POST com JSON, para quem já usa Discord, n8n ou Make.
  *
  * Falha de aviso NUNCA derruba o que estava acontecendo: o objetivo é contar
@@ -60,6 +61,11 @@ export async function avisar({ evento, titulo, mensagem = '', conta = null }) {
   ].filter(Boolean).join('\n');
 
   const destinos = [];
+  // O WhatsApp é o destino mais provável de ser lido de fato: o aviso chega
+  // na mesma conversa onde o usuário dá os comandos.
+  if (s.whatsappEnabled && s.whatsappNumber) {
+    destinos.push(whatsapp.avisar(texto));
+  }
   if (s.telegramBotToken && s.telegramChatId) {
     destinos.push(enviarTelegram(s, texto));
   }
@@ -111,10 +117,11 @@ async function postar(url, corpo) {
 /** Testa a configuração atual e diz o que aconteceu, para o botão do painel. */
 export async function testar() {
   const s = await prisma.settings.findUnique({ where: { id: 1 } });
+  const temWhatsapp = !!(s?.whatsappEnabled && s?.whatsappNumber);
   const temTelegram = !!(s?.telegramBotToken && s?.telegramChatId);
   const temWebhook = !!s?.webhookUrl;
 
-  if (!temTelegram && !temWebhook) {
+  if (!temWhatsapp && !temTelegram && !temWebhook) {
     return { ok: false, mensagem: 'Nenhum destino configurado.' };
   }
 
@@ -142,6 +149,7 @@ async function forcar(titulo, mensagem) {
   const s = await prisma.settings.findUnique({ where: { id: 1 } });
   const texto = `${EMOJI[EVENTO.PUBLICACAO_OK]} ${titulo}\n${mensagem}`;
   const destinos = [];
+  if (s.whatsappEnabled && s.whatsappNumber) destinos.push(whatsapp.avisar(texto));
   if (s.telegramBotToken && s.telegramChatId) destinos.push(enviarTelegram(s, texto));
   if (s.webhookUrl) destinos.push(enviarWebhook(s.webhookUrl, { titulo, mensagem, texto }));
   const r = await Promise.allSettled(destinos);

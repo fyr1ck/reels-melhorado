@@ -427,6 +427,14 @@ model Settings {
   /// vezes por dia não quer 20 mensagens.
   notifyOnSuccess  Boolean @default(false)
 
+  // --- controle remoto por WhatsApp ---
+  /// Desligado por padrão. Ligado, os avisos vão para o WhatsApp e o número
+  /// abaixo pode dar comandos.
+  whatsappEnabled Boolean @default(false)
+  /// O ÚNICO número atendido, com código do país (ex: 5516994441788).
+  /// Mensagem de qualquer outra conversa é ignorada sem resposta.
+  whatsappNumber  String?
+
   // --- assistente de código (API do Claude) ---
   /// Desligado por padrão: nada sai desta máquina sem alguém ligar.
   assistantEnabled  Boolean @default(false)

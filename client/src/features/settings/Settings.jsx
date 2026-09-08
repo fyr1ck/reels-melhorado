@@ -24,6 +24,7 @@ const ATALHOS = [
   { to: '/conteudo-repetido', label: 'Conteúdo repetido entre contas', where: 'Conteúdo repetido' },
   { to: '/armazenamento', label: 'Espaço em disco', where: 'Armazenamento' },
   { to: '/assistente', label: 'Assistente de código e chave da API', where: 'Assistente' },
+  { to: '/whatsapp', label: 'Avisos e comandos pelo WhatsApp', where: 'WhatsApp' },
 ];
 
 export default function Settings() {
@@ -194,6 +195,8 @@ export default function Settings() {
         <p className="faint" style={{ marginBottom: 12 }}>
           Quando uma conta é pausada por falha, ou o Instagram pede CAPTCHA/2FA, você recebe a
           mensagem onde estiver. Sem isto, a fila pode ficar parada a noite inteira sem ninguém saber.
+          {' '}Para receber no <b>WhatsApp</b> — e poder responder com comandos —, use a{' '}
+          <Link to="/whatsapp">tela do WhatsApp</Link>.
         </p>
 
         <div className="grid grid--2">

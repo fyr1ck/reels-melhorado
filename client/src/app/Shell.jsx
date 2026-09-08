@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
   Copy,
-  Users, Activity, HardDrive, Bot, Settings as SettingsIcon, Wand2,
+  Users, Activity, HardDrive, Bot, MessageCircle, Settings as SettingsIcon, Wand2,
   PanelLeftClose, PanelLeft, Film, Check, AlertTriangle,
 } from 'lucide-react';
 import { useAccount } from '../hooks/useAccount.jsx';
@@ -39,6 +39,7 @@ const NAV = [
     items: [
       { to: '/contas', label: 'Contas', icon: Users },
       { to: '/atividade', label: 'Atividade', icon: Activity },
+      { to: '/whatsapp', label: 'WhatsApp', title: 'WhatsApp — avisos e comandos', icon: MessageCircle },
     ],
   },
   {

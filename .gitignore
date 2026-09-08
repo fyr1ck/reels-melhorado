@@ -5,6 +5,9 @@ prisma/data/
 *.db
 *.db-journal
 playwright/session/
+# Sessao do WhatsApp Web: sao as chaves de login da conta pessoal, e o
+# perfil inteiro do Chromium passa de 100 MB.
+playwright/whatsapp/
 videos/pending/*
 videos/published/*
 videos/failed/*
