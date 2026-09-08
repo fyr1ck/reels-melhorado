@@ -15,7 +15,9 @@ const TIMEOUT_MS = 120_000;
 export const MODELOS = [
   { id: 'claude-sonnet-5', nome: 'Sonnet 5', hint: 'Equilíbrio entre custo e capacidade. Recomendado.' },
   { id: 'claude-opus-5', nome: 'Opus 5', hint: 'O mais capaz. Use quando o Sonnet não resolver.' },
-  { id: 'claude-haiku-4-5-20251001', nome: 'Haiku 4.5', hint: 'O mais barato e rápido, para erros simples.' },
+  // Sem sufixo de data: os ids da tabela oficial são completos como estão, e
+  // um sufixo colado de memória vira 400 na primeira análise.
+  { id: 'claude-haiku-4-5', nome: 'Haiku 4.5', hint: 'O mais barato e rápido, para erros simples.' },
 ];
 
 const INSTRUCOES = `Você é um assistente de manutenção de um painel local de automação de Instagram Reels.
