@@ -427,6 +427,17 @@ model Settings {
   /// vezes por dia não quer 20 mensagens.
   notifyOnSuccess  Boolean @default(false)
 
+  // --- assistente de código (API do Claude) ---
+  /// Desligado por padrão: nada sai desta máquina sem alguém ligar.
+  assistantEnabled  Boolean @default(false)
+  /// Chave da API. `ANTHROPIC_API_KEY` no .env tem prioridade sobre esta, e é
+  /// o lugar preferível — o banco vira backup, e chave em backup vaza.
+  assistantApiKey   String?
+  assistantModel    String  @default("claude-sonnet-5")
+  /// Aplicar a correção sem perguntar. Desligado por padrão: escrever no
+  /// código de um app em execução pode deixá-lo sem subir.
+  assistantAutoApply Boolean @default(false)
+
   autoCleanCache      Boolean   @default(false)
   autoCleanEveryHours Int       @default(24)
   lastCacheCleanAt    DateTime?

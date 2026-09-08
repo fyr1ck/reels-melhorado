@@ -31,6 +31,7 @@ const Accounts = lazy(() => import('../features/accounts/Accounts.jsx'));
 const Activity = lazy(() => import('../features/activity/Activity.jsx'));
 const Storage = lazy(() => import('../features/storage/Storage.jsx'));
 const Settings = lazy(() => import('../features/settings/Settings.jsx'));
+const Assistant = lazy(() => import('../features/assistant/Assistant.jsx'));
 
 export default function App() {
   return (
@@ -57,6 +58,7 @@ export default function App() {
                   <Route path="/contas" element={<Accounts />} />
                   <Route path="/atividade" element={<Activity />} />
                   <Route path="/armazenamento" element={<Storage />} />
+                  <Route path="/assistente" element={<Assistant />} />
                   <Route path="/configuracoes" element={<Settings />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

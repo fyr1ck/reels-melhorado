@@ -3,6 +3,7 @@ import { config } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import { ensureDirs } from './lib/files.js';
 import * as duplicates from './core/queue/duplicates.js';
+import * as assistant from './core/assistant/index.js';
 import * as accounts from './core/accounts/accounts.js';
 import * as scheduler from './core/scheduling/scheduler.js';
 import * as watch from './core/watch/watch.js';
@@ -129,8 +130,18 @@ process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
   console.error('⚠ Promessa rejeitada sem tratamento (o servidor continua):', msg);
+  assistant.registrarSeLigado({
+    origem: 'SERVIDOR',
+    mensagem: msg,
+    stack: reason instanceof Error ? (reason.stack ?? '') : '',
+  });
 });
 
 process.on('uncaughtException', (err) => {
   console.error('⚠ Exceção não capturada (o servidor continua):', err.message);
+  assistant.registrarSeLigado({
+    origem: 'SERVIDOR',
+    mensagem: err.message,
+    stack: err.stack ?? '',
+  });
 });

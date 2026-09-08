@@ -37,9 +37,12 @@ export async function exportar() {
       prisma.settings.findUnique({ where: { id: 1 } }),
     ]);
 
-  // Os tokens de aviso ficam de fora: um backup costuma ir para a nuvem ou
-  // para o WhatsApp, e um token de bot vazado dá controle sobre o canal.
-  const { telegramBotToken, telegramChatId, webhookUrl, ...settingsSeguro } = settings ?? {};
+  // Tokens e chaves ficam de fora: um backup costuma ir para a nuvem ou para
+  // o WhatsApp, e tanto o token do bot quanto a chave da API dão acesso
+  // pago ou controle de canal para quem puser a mão nele.
+  const {
+    telegramBotToken, telegramChatId, webhookUrl, assistantApiKey, ...settingsSeguro
+  } = settings ?? {};
 
   return {
     versao: VERSAO,

@@ -1,5 +1,6 @@
 import { AppError } from '../../lib/errors.js';
 import * as logger from '../../core/log.js';
+import * as assistant from '../../core/assistant/index.js';
 
 /**
  * Envolve um handler async para que rejeições virem `next(err)`.
@@ -31,5 +32,14 @@ export function errorHandler(err, req, res, _next) {
 
   logger.error({ action: 'ERRO_NAO_TRATADO', message: `${req.method} ${req.path}: ${err.message}` });
   console.error(err);
+
+  // Só o que chegou aqui é candidato a defeito de código: erros tipados
+  // (validação, não encontrado) são o app funcionando como deveria.
+  assistant.registrarSeLigado({
+    origem: 'ROTA',
+    mensagem: err.message,
+    stack: err.stack ?? '',
+    contexto: { metodo: req.method, rota: req.path },
+  });
   res.status(500).json({ error: 'Erro interno. Veja os logs do servidor.', code: 'INTERNO' });
 }

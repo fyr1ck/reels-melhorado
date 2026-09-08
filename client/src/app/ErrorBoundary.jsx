@@ -21,6 +21,21 @@ export default class ErrorBoundary extends Component {
     return { erro };
   }
 
+  componentDidCatch(erro) {
+    // Manda para o assistente. O servidor decide se guarda — ele só registra
+    // com o assistente ligado. Falha aqui é ignorada de propósito: a tela de
+    // erro não pode quebrar por causa do relato do erro.
+    fetch('/api/assistant/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: erro?.message ?? String(erro),
+        stack: erro?.stack ?? '',
+        route: window.location.pathname,
+      }),
+    }).catch(() => {});
+  }
+
   render() {
     const { erro } = this.state;
     if (!erro) return this.props.children;

@@ -1,5 +1,15 @@
 import 'dotenv/config';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+/**
+ * Raiz do projeto, deduzida da localização deste arquivo.
+ *
+ * `process.cwd()` mudaria conforme de onde o app foi iniciado, e o
+ * assistente precisa de um limite CONFIÁVEL para decidir o que pode ler e
+ * escrever — uma raiz errada abriria o disco inteiro.
+ */
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
  * Configuração num lugar só, lida uma vez na subida.
@@ -22,6 +32,7 @@ function num(name, fallback, { min = 1 } = {}) {
 const VIDEOS_DIR = path.resolve(process.env.VIDEOS_DIR || './videos');
 
 export const config = {
+  raiz: RAIZ,
   port: num('PORT', 3001),
   env: process.env.NODE_ENV || 'development',
 
@@ -55,6 +66,8 @@ export const config = {
     editorAssets: path.join(VIDEOS_DIR, 'editor-assets'),
     editorTmp: path.join(VIDEOS_DIR, 'editor-tmp'),
     sessions: path.resolve(process.env.SESSION_DIR || './playwright/session'),
+    /** Onde o banco e os arquivos de estado do app moram. */
+    data: path.join(RAIZ, 'prisma', 'data'),
   },
 
   limits: {

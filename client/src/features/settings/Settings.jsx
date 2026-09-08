@@ -23,6 +23,7 @@ const ATALHOS = [
   { to: '/horarios', label: 'Horários e variação aleatória', where: 'Horários' },
   { to: '/conteudo-repetido', label: 'Conteúdo repetido entre contas', where: 'Conteúdo repetido' },
   { to: '/armazenamento', label: 'Espaço em disco', where: 'Armazenamento' },
+  { to: '/assistente', label: 'Assistente de código e chave da API', where: 'Assistente' },
 ];
 
 export default function Settings() {

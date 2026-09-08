@@ -12,6 +12,7 @@ import dashboard from './http/routes/dashboard.js';
 import publications from './http/routes/publications.js';
 import logs from './http/routes/logs.js';
 import settings from './http/routes/settings.js';
+import assistantRoutes from './http/routes/assistant.js';
 import editor from './http/routes/editor.js';
 
 /**
@@ -38,6 +39,7 @@ export function createApp() {
   app.use('/api/publications', publications);
   app.use('/api/logs', logs);
   app.use('/api/settings', settings);
+  app.use('/api/assistant', assistantRoutes);
   app.use('/api/editor', editor);
 
   app.use('/api/covers', express.static(config.paths.covers));

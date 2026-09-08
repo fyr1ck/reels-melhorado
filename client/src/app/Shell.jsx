@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
   Copy,
-  Users, Activity, HardDrive, Settings as SettingsIcon, Wand2,
+  Users, Activity, HardDrive, Bot, Settings as SettingsIcon, Wand2,
   PanelLeftClose, PanelLeft, Film, Check, AlertTriangle,
 } from 'lucide-react';
 import { useAccount } from '../hooks/useAccount.jsx';
@@ -45,6 +45,7 @@ const NAV = [
     label: 'Sistema',
     items: [
       { to: '/armazenamento', label: 'Armazenamento', icon: HardDrive },
+      { to: '/assistente', label: 'Assistente', title: 'Assistente de código', icon: Bot },
       { to: '/configuracoes', label: 'Configurações', icon: SettingsIcon },
     ],
   },
