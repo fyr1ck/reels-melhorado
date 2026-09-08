@@ -124,3 +124,19 @@
 .qbusca:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
 
 .qmais { width: 100%; justify-content: center; }
+
+
+/* Reciclagem de conteudo publicado. */
+.reciclo .ui-field { margin: 0; }
+
+/* Arrastar para reordenar. */
+.vid__grip {
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.vid__grip:active { cursor: grabbing; }
+.vid[draggable="true"] { cursor: grab; }
+.vid.is-arrastando { opacity: 0.4; border-color: var(--brand); }

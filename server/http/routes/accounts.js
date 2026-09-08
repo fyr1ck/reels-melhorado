@@ -12,6 +12,7 @@ import * as v from '../../lib/validate.js';
 import multer from 'multer';
 import { config } from '../../config/env.js';
 import * as covers from '../../core/queue/covers.js';
+import * as recycle from '../../core/queue/recycle.js';
 
 const router = Router();
 
@@ -70,6 +71,17 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.intervalMinutes !== undefined) {
     data.intervalMinutes = v.int(b.intervalMinutes, { field: 'Intervalo', min: 1, max: 1440 });
   }
+  // --- reciclagem ---
+  if (b.recycleEnabled !== undefined) {
+    data.recycleEnabled = v.bool(b.recycleEnabled, { field: 'Reciclagem' });
+  }
+  if (b.recycleAfterDays !== undefined) {
+    data.recycleAfterDays = v.int(b.recycleAfterDays, { field: 'Carência da reciclagem', min: 1, max: 365 });
+  }
+  if (b.recycleMaxTimes !== undefined) {
+    data.recycleMaxTimes = v.int(b.recycleMaxTimes, { field: 'Máximo de reciclagens', min: 0, max: 50 });
+  }
+
   // --- limites de segurança ---
   if (b.dailyLimit !== undefined) {
     data.dailyLimit = v.int(b.dailyLimit, { field: 'Teto diário', min: 0, max: 200 });
@@ -150,6 +162,28 @@ router.delete('/:id/cover', wrap(async (req, res) => {
   });
   if (account.defaultCoverPath) await covers.cleanupIfOrphan(account.defaultCoverPath);
   res.json(updated);
+}));
+
+/** GET /:id/recycle — quantos vídeos já cumpriram a carência, sem mexer em nada. */
+router.get('/:id/recycle', wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+  res.json(await recycle.previa(account));
+}));
+
+/**
+ * POST /:id/recycle — devolve à fila agora, sem esperar o agendador.
+ *
+ * Existe para quem quer ver o efeito na hora, em vez de descobrir amanhã se
+ * a configuração estava certa.
+ */
+router.post('/:id/recycle', wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+  if (!account.recycleEnabled) {
+    throw new ValidationError('Ligue a reciclagem desta conta antes de rodar.');
+  }
+  const r = await recycle.reciclar(account, { limite: 50 });
+  await regenerate({ accountId: account.id });
+  res.json(r);
 }));
 
 /** Define a conta usada pelas telas quando nenhuma está selecionada. */

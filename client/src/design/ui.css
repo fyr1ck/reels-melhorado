@@ -313,3 +313,19 @@
 .ui-meter__fill--warn { background: linear-gradient(90deg, #b45309, #f5b942); }
 .ui-meter__fill--danger { background: linear-gradient(90deg, #b91c1c, #f75f6d); }
 .ui-meter__fill--muted { background: rgba(255, 255, 255, 0.16); }
+
+/* Detalhe técnico do erro: monoespaçado e com rolagem própria, para uma
+   mensagem longa não esticar o cartão. */
+.erro-detalhe {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 160px;
+}

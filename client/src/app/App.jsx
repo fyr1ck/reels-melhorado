@@ -5,6 +5,7 @@ import { ToastProvider } from '../hooks/useToast.jsx';
 import { ConfirmProvider } from '../hooks/useConfirm.jsx';
 import { Skeleton } from '../design/ui.jsx';
 import Shell from './Shell.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
 
 /**
  * Telas carregadas sob demanda.
@@ -37,25 +38,30 @@ export default function App() {
       <ConfirmProvider>
         <AccountProvider>
           <Shell>
-            {/* O mesmo esqueleto que as telas usam enquanto buscam dados: a
-                troca de rota fica indistinguível de um carregamento normal. */}
-            <Suspense fallback={<Skeleton height={360} />}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/fila" element={<Queue />} />
-                <Route path="/horarios" element={<Schedule />} />
-                <Route path="/calendario" element={<Calendar />} />
-                <Route path="/editor" element={<Editor />} />
-                <Route path="/biblioteca" element={<Library />} />
-                <Route path="/pastas" element={<Folders />} />
-                <Route path="/conteudo-repetido" element={<Duplicates />} />
-                <Route path="/contas" element={<Accounts />} />
-                <Route path="/atividade" element={<Activity />} />
-                <Route path="/armazenamento" element={<Storage />} />
-                <Route path="/configuracoes" element={<Settings />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Suspense>
+            {/* A fronteira vem POR FORA do Suspense: o erro que interessa é o
+                do pedaço que não chegou, e ele estoura enquanto o Suspense
+                ainda espera. Por dentro, nunca seria alcançada. */}
+            <ErrorBoundary>
+              {/* O mesmo esqueleto que as telas usam enquanto buscam dados: a
+                  troca de rota fica indistinguível de um carregamento normal. */}
+              <Suspense fallback={<Skeleton height={360} />}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/fila" element={<Queue />} />
+                  <Route path="/horarios" element={<Schedule />} />
+                  <Route path="/calendario" element={<Calendar />} />
+                  <Route path="/editor" element={<Editor />} />
+                  <Route path="/biblioteca" element={<Library />} />
+                  <Route path="/pastas" element={<Folders />} />
+                  <Route path="/conteudo-repetido" element={<Duplicates />} />
+                  <Route path="/contas" element={<Accounts />} />
+                  <Route path="/atividade" element={<Activity />} />
+                  <Route path="/armazenamento" element={<Storage />} />
+                  <Route path="/configuracoes" element={<Settings />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </Shell>
         </AccountProvider>
       </ConfirmProvider>

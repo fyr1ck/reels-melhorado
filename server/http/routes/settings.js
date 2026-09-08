@@ -5,7 +5,10 @@ import multer from 'multer';
 import { config } from '../../config/env.js';
 import * as storage from '../../core/storage.js';
 import * as covers from '../../core/queue/covers.js';
+import { ValidationError } from '../../lib/errors.js';
 import * as v from '../../lib/validate.js';
+import * as notify from '../../core/notify.js';
+import * as backup from '../../core/backup.js';
 
 const router = Router();
 const coverUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.limits.coverBytes } });
@@ -28,6 +31,20 @@ router.patch('/', wrap(async (req, res) => {
   if (req.body.defaultCaption !== undefined) {
     data.defaultCaption = v.str(req.body.defaultCaption, { field: 'Legenda padrão', min: 0, max: 2200 }) || null;
   }
+  // --- avisos ---
+  // String vazia = desligar. Sem isso não haveria como remover um token.
+  for (const campo of ['telegramBotToken', 'telegramChatId', 'webhookUrl']) {
+    if (req.body[campo] !== undefined) {
+      data[campo] = v.str(req.body[campo], { field: campo, min: 0, max: 500 }) || null;
+    }
+  }
+  if (data.webhookUrl && !/^https?:\/\//i.test(data.webhookUrl)) {
+    throw new ValidationError('A URL do webhook precisa começar com http:// ou https://');
+  }
+  if (req.body.notifyOnSuccess !== undefined) {
+    data.notifyOnSuccess = v.bool(req.body.notifyOnSuccess, { field: 'Avisar em sucesso' });
+  }
+
   if (req.body.autoCleanCache !== undefined) {
     data.autoCleanCache = v.bool(req.body.autoCleanCache, { field: 'Limpeza automática' });
   }
@@ -36,6 +53,32 @@ router.patch('/', wrap(async (req, res) => {
   }
 
   res.json(await prisma.settings.update({ where: { id: 1 }, data }));
+}));
+
+/**
+ * GET /backup — baixa a configuração inteira como JSON.
+ *
+ * Content-Disposition faz o navegador salvar em vez de exibir: um JSON de
+ * várias centenas de KB aberto numa aba não serve de backup para ninguém.
+ */
+router.get('/backup', wrap(async (req, res) => {
+  const dados = await backup.exportar();
+  const nome = `reels-manager-${new Date().toISOString().slice(0, 10)}.json`;
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+  res.send(JSON.stringify(dados, null, 2));
+}));
+
+/** POST /backup/restore — restaura. `modo: "replace"` apaga tudo antes. */
+router.post('/backup/restore', wrap(async (req, res) => {
+  const modo = req.body.modo === 'replace' ? 'replace' : 'merge';
+  res.json(await backup.restaurar(req.body.backup, { modo }));
+}));
+
+/** POST /notify/test — manda uma mensagem de verdade para o destino salvo. */
+router.post('/notify/test', wrap(async (req, res) => {
+  res.json(await notify.testar());
 }));
 
 /** Uso de disco por pasta, com o rótulo e o aviso de cada uma. */

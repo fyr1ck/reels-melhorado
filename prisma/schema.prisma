@@ -56,6 +56,15 @@ model Account {
   /// Sorteia o próximo vídeo em vez de seguir a ordem da fila.
   randomOrder     Boolean @default(false)
 
+  // --- reciclagem de conteúdo ---
+  /// Devolve à fila vídeos publicados há mais de N dias. Página de meme não
+  /// vive de material inédito: quase ninguém que segue hoje viu o post de dois
+  /// meses atrás, e sem isto a conta para quando o acervo acaba.
+  recycleEnabled   Boolean @default(false)
+  recycleAfterDays Int     @default(30)
+  /// Quantas vezes o mesmo vídeo pode voltar. 0 = sem limite.
+  recycleMaxTimes  Int     @default(0)
+
   // --- limites de segurança ---
   /// Máximo de publicações por dia. 0 = sem teto.
   dailyLimit Int @default(0)
@@ -130,6 +139,13 @@ model Video {
   /// contém cabeçalho e início do stream — dois arquivos distintos praticamente
   /// nunca coincidem nos dois campos ao mesmo tempo.
   contentHash String?
+
+  /// Quantas vezes este vídeo já voltou à fila depois de publicado.
+  recycleCount   Int       @default(0)
+  /// Última vez que voltou. A carência conta a partir daqui, não de
+  /// publishedAt: senão um vídeo reciclado ontem voltaria de novo hoje, já que
+  /// a data original continua velha o suficiente para sempre.
+  lastRecycledAt DateTime?
 
   createdAt   DateTime  @default(now())
   publishedAt DateTime?
@@ -398,6 +414,18 @@ model Settings {
   /// Capa aplicada a novos vídeos que não trazem a própria nem a da conta.
   defaultCoverPath String?
   useDefaultCover  Boolean @default(false)
+
+  // --- avisos fora do painel ---
+  /// Token de um bot do Telegram (criado no @BotFather) e o id do chat.
+  /// Sem isto, uma conta que pausa às 3h da manhã só é descoberta quando
+  /// alguém abre o painel — com a fila parada desde então.
+  telegramBotToken String?
+  telegramChatId   String?
+  /// POST com JSON, para quem já usa Discord, n8n ou Make.
+  webhookUrl       String?
+  /// Avisar também quando dá certo. Desligado por padrão: quem publica 20
+  /// vezes por dia não quer 20 mensagens.
+  notifyOnSuccess  Boolean @default(false)
 
   autoCleanCache      Boolean   @default(false)
   autoCleanEveryHours Int       @default(24)

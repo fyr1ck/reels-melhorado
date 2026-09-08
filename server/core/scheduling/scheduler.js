@@ -9,6 +9,8 @@ import { publishReel } from '../publishing/reel.js';
 import { STORY_UNSUPPORTED_REASON } from '../publishing/story.js';
 import { moveTo } from '../../lib/files.js';
 import * as covers from '../queue/covers.js';
+import * as recycle from '../queue/recycle.js';
+import * as notify from '../notify.js';
 
 let timer = null;
 let busy = false;
@@ -42,6 +44,10 @@ export async function regenerate({ accountId = null, days = config.scheduleDaysA
 }
 
 async function regenerateFor(account, days) {
+  // Recicla ANTES de montar a grade: um vídeo que acabou de voltar precisa
+  // estar na fila para conseguir um horário nesta mesma passagem.
+  await recycle.reciclar(account).catch(() => { /* nunca impede o agendamento */ });
+
   // Devolve à fila os vídeos que estavam presos em agendamentos futuros.
   const pending = await prisma.publication.findMany({
     where: { accountId: account.id, status: VIDEO_STATUS.SCHEDULED },
@@ -342,6 +348,12 @@ async function run(publication) {
           action: 'PUBLICACAO_CONCLUIDA', accountId: account.id,
           videoName: video.filename, attempt, durationMs,
         });
+        await notify.avisar({
+          evento: notify.EVENTO.PUBLICACAO_OK,
+          titulo: 'Publicado',
+          conta: account.username,
+          mensagem: video.filename,
+        });
         return;
       }
     } catch (err) {
@@ -403,5 +415,14 @@ async function run(publication) {
   await logger.error({
     action: 'PUBLICACAO_FALHOU_DEFINITIVAMENTE', accountId: account.id, videoName: video.filename,
     message: `Falhou após ${config.maxAttempts} tentativas. Automação de @${account.username} pausada — revise em Fila > Falhados.`,
+  });
+
+  // Este é o momento em que a operação para. Sem aviso externo, a conta ficava
+  // parada até alguém abrir o painel por acaso.
+  await notify.avisar({
+    evento: notify.EVENTO.CONTA_PAUSADA,
+    titulo: 'Automação pausada',
+    conta: account.username,
+    mensagem: `"${video.filename}" falhou ${config.maxAttempts} vezes e a conta foi pausada. Reative em Contas depois de resolver.`,
   });
 }

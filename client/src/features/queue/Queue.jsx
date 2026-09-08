@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square, Split, Users, Search,
+  RefreshCcw, GripVertical,
 } from 'lucide-react';
 import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
@@ -8,7 +9,7 @@ import { useAccount } from '../../hooks/useAccount.jsx';
 import { useToast } from '../../hooks/useToast.jsx';
 import { useConfirm } from '../../hooks/useConfirm.jsx';
 import { api } from '../../lib/api.js';
-import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton, Checkbox, Input } from '../../design/ui.jsx';
+import { Card, Button, Badge, Tabs, Empty, Textarea, Skeleton, Checkbox, Input, Field } from '../../design/ui.jsx';
 import { bytes, duration, dateTime } from '../../lib/format.js';
 import './queue.css';
 
@@ -22,7 +23,7 @@ const ABAS = [
 const TOM = { PENDING: 'muted', SCHEDULED: 'brand', PUBLISHING: 'warn', PUBLISHED: 'ok', FAILED: 'danger' };
 
 export default function Queue() {
-  const { accountId, account, accounts } = useAccount();
+  const { accountId, account, accounts, reload: reloadAccounts } = useAccount();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -41,6 +42,10 @@ export default function Queue() {
   const [contasSel, setContasSel] = useState(new Set());
 
   const [busca, setBusca] = useState('');
+  // Índice do cartão sendo arrastado. Guardar o índice (e não o id) deixa a
+  // troca de posição ser uma operação de array, sem procurar nada.
+  const [arrastando, setArrastando] = useState(null);
+  const [ordem, setOrdem] = useState(null);
   // Quantos itens a lista desenha. Uma fila de 300 vídeos gerava 300 cartões
   // de uma vez, e a tela travava a cada digitada na legenda.
   const [limite, setLimite] = useState(60);
@@ -58,6 +63,27 @@ export default function Queue() {
   const alvos = distribuir
     ? (contasSel.size ? accounts.filter((a) => contasSel.has(a.id)) : accounts)
     : [];
+
+  const { data: reciclo, reload: reloadReciclo } = useQuery(
+    `/accounts/${accountId}/recycle`,
+    { enabled: !!accountId && !!account?.recycleEnabled },
+  );
+
+  const salvarReciclo = useMutation(async (patch) => {
+    await api.patch(`/accounts/${accountId}`, patch);
+    await reloadAccounts();
+    await reload({ quiet: true });
+    await reloadReciclo({ quiet: true });
+  });
+
+  const reciclarAgora = useMutation(async () => {
+    const r = await api.post(`/accounts/${accountId}/recycle`);
+    await reload({ quiet: true });
+    await reloadReciclo({ quiet: true });
+    toast.success(r.reciclados
+      ? `${r.reciclados} vídeo(s) voltaram para a fila.`
+      : 'Nenhum vídeo cumpriu a carência ainda.');
+  });
 
   const enviar = useMutation(async (files) => {
     if (distribuir && alvos.length < 2) {
@@ -198,6 +224,42 @@ export default function Queue() {
   }, [videos, busca]);
 
   const visiveis = useMemo(() => filtrados.slice(0, limite), [filtrados, limite]);
+
+  /**
+   * Reordenar arrastando.
+   *
+   * A rota de reordenar já existia desde o começo, mas nada na interface a
+   * chamava: a posição na fila só mudava apagando e reenviando na ordem certa.
+   *
+   * A lista muda na tela ANTES da resposta do servidor (`ordem`) — arrastar e
+   * esperar meio segundo para o item pular para o lugar parece travado.
+   */
+  const lista = ordem ?? visiveis;
+
+  // Arrastar só faz sentido na fila de espera: a ordem de quem já publicou não
+  // muda nada, e com busca ativa a posição vista não é a posição real.
+  const podeArrastar = aba === 'PENDING' && !busca && !account?.randomOrder;
+
+  function aoSoltar(destino) {
+    if (arrastando === null || arrastando === destino) { setArrastando(null); return; }
+
+    const nova = [...lista];
+    const [movido] = nova.splice(arrastando, 1);
+    nova.splice(destino, 0, movido);
+    setOrdem(nova);
+    setArrastando(null);
+
+    // Envia a fila INTEIRA na nova ordem, não só o trecho visível: o servidor
+    // reescreve sortOrder por posição, e mandar 60 de 300 zeraria o resto.
+    const restantes = filtrados.slice(visiveis.length).map((v) => v.id);
+    api.post('/videos/reorder', { ids: [...nova.map((v) => v.id), ...restantes] })
+      .then(() => reload({ quiet: true }))
+      .then(() => setOrdem(null))
+      .catch((err) => {
+        toast.error(err.message);
+        setOrdem(null); // desfaz o otimismo: volta ao que o servidor tem
+      });
+  }
 
   const alternar = (id) => setSelecao((s) => {
     const n = new Set(s);
@@ -373,6 +435,68 @@ export default function Queue() {
         </Card>
       )}
 
+      {/* Reciclagem: página de meme não vive de material inédito, e sem isto a
+          fila precisa ser abastecida à mão para sempre. */}
+      <Card
+        className="mt reciclo"
+        title="Reaproveitar o que já foi publicado"
+        icon={RefreshCcw}
+        action={account?.recycleEnabled && (
+          <Button
+            size="sm" icon={RefreshCcw} loading={reciclarAgora.busy}
+            onClick={() => reciclarAgora.run().catch((e) => toast.error(e.message))}
+          >
+            Rodar agora
+          </Button>
+        )}
+      >
+        <Checkbox
+          label="Devolver vídeos antigos para a fila automaticamente"
+          hint="Quase ninguém que segue hoje viu o post de dois meses atrás. O vídeo volta como o MESMO item — não vira cópia, então não aparece como conteúdo duplicado."
+          checked={account?.recycleEnabled ?? false}
+          onChange={(e) => salvarReciclo.run({ recycleEnabled: e.target.checked })
+            .then(() => toast.success(e.target.checked ? 'Reciclagem ligada.' : 'Reciclagem desligada.'))
+            .catch((err) => toast.error(err.message))}
+        />
+
+        {account?.recycleEnabled && (
+          <>
+            <div className="row mt">
+              <Field label="Só depois de">
+                <Input
+                  type="number" min={1} max={365} style={{ width: 90 }}
+                  defaultValue={account.recycleAfterDays}
+                  onBlur={(e) => salvarReciclo.run({ recycleAfterDays: Number(e.target.value) })
+                    .then(() => toast.success('Carência atualizada.'))
+                    .catch((err) => toast.error(err.message))}
+                />
+              </Field>
+              <span className="faint" style={{ paddingTop: 18 }}>dias da última vez que foi ao ar</span>
+
+              <Field label="No máximo">
+                <Input
+                  type="number" min={0} max={50} style={{ width: 90 }}
+                  defaultValue={account.recycleMaxTimes}
+                  onBlur={(e) => salvarReciclo.run({ recycleMaxTimes: Number(e.target.value) })
+                    .then(() => toast.success('Limite atualizado.'))
+                    .catch((err) => toast.error(err.message))}
+                />
+              </Field>
+              <span className="faint" style={{ paddingTop: 18 }}>
+                {account.recycleMaxTimes > 0 ? 'vezes por vídeo' : 'vezes — 0 é sem limite'}
+              </span>
+            </div>
+
+            <p className="faint mt">
+              {reciclo?.prontos > 0
+                ? <><b>{reciclo.prontos}</b> de {reciclo.publicados} publicados já podem voltar.</>
+                : <>Nenhum dos {reciclo?.publicados ?? 0} publicados cumpriu a carência.</>}
+              {reciclo?.proximoEm && <> Próximo em {dateTime(reciclo.proximoEm)}.</>}
+            </p>
+          </>
+        )}
+      </Card>
+
       <Tabs value={aba} onChange={(v) => { setAba(v); setLimite(60); }} items={ABAS} />
 
       {videos?.length > 6 && (
@@ -428,8 +552,24 @@ export default function Queue() {
         </Card>
       ) : (
         <div className="stack">
-          {visiveis.map((v, i) => (
-            <Card key={v.id} className="vid">
+          {lista.map((v, i) => (
+            <Card
+              key={v.id}
+              className={`vid${arrastando === i ? ' is-arrastando' : ''}`}
+              // Só arrasta o que ainda não foi publicado e sem busca ativa:
+              // reordenar um subconjunto filtrado produziria uma ordem que não
+              // corresponde ao que está na tela.
+              draggable={podeArrastar}
+              onDragStart={() => setArrastando(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => aoSoltar(i)}
+              onDragEnd={() => setArrastando(null)}
+            >
+              {podeArrastar && (
+                <span className="vid__grip" title="Arraste para mudar a posição na fila">
+                  <GripVertical size={14} />
+                </span>
+              )}
               {aba !== 'PUBLISHED' && (
                 <input
                   type="checkbox"
@@ -507,7 +647,7 @@ export default function Queue() {
             </Card>
           ))}
 
-          {filtrados.length > visiveis.length && (
+          {filtrados.length > lista.length && (
             <Button
               className="qmais"
               onClick={() => setLimite((n) => n + 100)}
