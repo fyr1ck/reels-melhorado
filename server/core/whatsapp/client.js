@@ -82,9 +82,18 @@ export async function diagnostico() {
     return achados;
   };
 
+  // O texto da tela junto: quando NENHUM seletor casa, saber que a página
+  // mostra "Reconecte seu telefone" ou uma tela em branco é a diferença entre
+  // adivinhar e ver o problema.
+  const texto = await pagina.evaluate(
+    () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 400),
+  ).catch(() => '(não foi possível ler)');
+
   return {
     aberto: true,
     url: pagina.url(),
+    titulo: await pagina.title().catch(() => null),
+    texto,
     estado,
     qr: await conferir(SELETORES.qr),
     logado: await conferir(SELETORES.logado),
@@ -102,6 +111,56 @@ export function qrAtual() {
 
 export function conectado() {
   return estado === 'CONECTADO';
+}
+
+/**
+ * A conexão ainda vale?
+ *
+ * `estado` era definido uma vez em `aguardarLogin` e nunca mais revisto. Quando
+ * o WhatsApp desconecta o dispositivo — por expirar, ou porque o usuário ligou
+ * outro telefone — o painel continuava anunciando CONECTADO e todo envio
+ * quebrava com "Erro interno", sem dizer o que fazer.
+ *
+ * Três falhas seguidas para declarar queda: uma checagem isolada pode pegar a
+ * página no meio de uma navegação, e derrubar a conexão por causa disso seria
+ * pior que o problema.
+ */
+const STRIKES_ATE_CAIR = 3;
+let strikes = 0;
+
+export async function verificarSaude() {
+  if (!contexto || !pagina || pagina.isClosed()) {
+    if (estado === 'CONECTADO') {
+      estado = 'DESLIGADO';
+      ultimoErro = 'A janela do WhatsApp foi fechada.';
+    }
+    return false;
+  }
+  if (estado !== 'CONECTADO') return false;
+
+  // Lista de conversas visível: está tudo certo, zera o contador.
+  if (await primeiro(pagina, SELETORES.logado, { visivel: true })) {
+    strikes = 0;
+    return true;
+  }
+
+  // QR de volta na tela é prova direta de que a sessão caiu — não precisa
+  // esperar os três strikes.
+  if (await primeiro(pagina, SELETORES.qr, { visivel: true })) {
+    estado = 'AGUARDANDO_QR';
+    ultimoErro = 'A sessão do WhatsApp expirou. Leia o QR de novo.';
+    strikes = 0;
+    return false;
+  }
+
+  strikes += 1;
+  if (strikes >= STRIKES_ATE_CAIR) {
+    estado = 'DESLIGADO';
+    ultimoErro = 'Perdi a conexão com o WhatsApp Web. Conecte de novo.';
+    strikes = 0;
+    return false;
+  }
+  return true; // ainda em dúvida: pode ser carregamento
 }
 
 /** O primeiro seletor da lista que existir na página. */
@@ -136,6 +195,7 @@ export async function conectar({
 
   estado = 'ABRINDO';
   ultimoErro = null;
+  strikes = 0;
   fs.mkdirSync(PASTA(), { recursive: true });
 
   try {
@@ -165,8 +225,14 @@ export async function conectar({
     await aguardarLogin({ timeoutMs, apenasSessaoSalva });
     return situacao();
   } catch (err) {
-    estado = 'ERRO';
-    ultimoErro = err.message;
+    // SESSAO_EXPIRADA é um sinal interno da retomada automática, não uma
+    // mensagem para ninguém ler. Traduzido aqui, porque é o que aparece na
+    // tela quando o app sobe e a sessão não vale mais.
+    const expirou = err.message === 'SESSAO_EXPIRADA';
+    estado = expirou ? 'DESLIGADO' : 'ERRO';
+    ultimoErro = expirou
+      ? 'A sessão salva não vale mais. Clique em Conectar com QR e leia o código.'
+      : err.message;
     await desconectar({ apagarSessao: false }).catch(() => {});
     throw err;
   }
@@ -286,7 +352,24 @@ async function abrirConversa(numero) {
 
   const url = `${URL_BASE}/send?phone=${alvo}`;
   if (!pagina.url().startsWith(url)) {
-    await pagina.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    try {
+      await pagina.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    } catch (err) {
+      // O WhatsApp Web é uma SPA: ela às vezes cancela a navegação e trata a
+      // URL por conta própria, e aí o ERR_ABORTED é inofensivo. Só vira erro
+      // se a conversa realmente não abrir — o laço abaixo decide isso.
+      if (!/ERR_ABORTED/.test(err.message)) throw err;
+      await pagina.waitForTimeout(1500);
+    }
+  }
+
+  // Se a sessão caiu, o problema não é a conversa — é o login. Dizer isso aqui
+  // evita o usuário ficar tentando enviar de novo contra uma sessão morta.
+  if (!(await primeiro(pagina, SELETORES.logado, { visivel: true }))
+      && await primeiro(pagina, SELETORES.qr, { visivel: true })) {
+    estado = 'AGUARDANDO_QR';
+    ultimoErro = 'A sessão do WhatsApp expirou. Leia o QR de novo.';
+    throw new ConflictError('A sessão do WhatsApp expirou. Abra a tela do WhatsApp e leia o QR de novo.');
   }
 
   const campo = pagina.locator(SELETORES.campoMensagem.join(', ')).first();
@@ -303,6 +386,17 @@ async function abrirConversa(numero) {
     if (apareceu && !(await primeiro(pagina, SELETORES.dialogo, { visivel: true }))) {
       return campo;
     }
+  }
+
+  // Chegou aqui sem QR e sem lista de conversas: a página está num estado que
+  // não é nenhum dos dois. Marcar como caído é mais honesto do que continuar
+  // anunciando CONECTADO enquanto todo envio falha.
+  if (!(await primeiro(pagina, SELETORES.logado, { visivel: true }))) {
+    estado = 'DESLIGADO';
+    ultimoErro = 'A página do WhatsApp não está nem logada nem no QR.';
+    throw new ConflictError(
+      'Perdi a conexão com o WhatsApp Web. Conecte de novo pela tela do WhatsApp.',
+    );
   }
 
   throw new ConflictError(

@@ -195,6 +195,17 @@ async function verificar() {
   const numero = await numeroAutorizado();
   if (!numero || !client.conectado()) return;
 
+  // Confere que a sessão ainda está de pé antes de tentar ler. Sem isto, uma
+  // sessão caída só era descoberta quando um envio falhava — e o painel
+  // continuava mostrando "conectado" até lá.
+  if (!(await client.verificarSaude())) {
+    await logger.warn({
+      action: 'WHATSAPP_CONEXAO_CAIU',
+      message: client.situacao().ultimoErro ?? 'Sessão não está mais válida.',
+    });
+    return;
+  }
+
   ocupado = true;
   try {
     const recebidas = await client.lerRecebidas(numero);
