@@ -27,6 +27,20 @@ let ocupado = false;
 const jaRespondidas = new Set();
 
 /**
+ * Desde quando esta execução está escutando.
+ *
+ * `jaRespondidas` vive em memória e some a cada reinício do servidor — e o
+ * `--watch` do modo dev reinicia a cada arquivo salvo. Sem uma âncora no
+ * tempo, o processo novo olha a conversa, não reconhece nada, e responde de
+ * novo a comandos de minutos atrás. O horário vem do próprio balão, então
+ * mensagem anterior à subida nunca é tratada como nova.
+ *
+ * Um minuto de folga cobre o relógio do WhatsApp, que mostra minutos cheios.
+ */
+const FOLGA_MS = 60_000;
+let escutaIniciadaEm = 0;
+
+/**
  * Achata uma mensagem de log numa linha só.
  *
  * Erro de servidor traz stack trace e, quando vem do terminal, código de cor
@@ -255,6 +269,9 @@ async function verificar() {
       if (jaRespondidas.has(m.id)) continue;
       jaRespondidas.add(m.id);
 
+      // Anterior à subida desta execução: é histórico, não pedido novo.
+      if (m.quando && m.quando < escutaIniciadaEm) continue;
+
       const cmd = interpretar(m.texto);
       if (!cmd) {
         await client.enviar(numero, 'Não entendi. Mande *menu* para ver o que dá para fazer.');
@@ -280,6 +297,7 @@ async function verificar() {
 
 export function iniciarEscuta() {
   if (timer) return;
+  escutaIniciadaEm = Date.now() - FOLGA_MS;
   timer = setInterval(() => verificar().catch(() => {}), INTERVALO_MS);
 }
 

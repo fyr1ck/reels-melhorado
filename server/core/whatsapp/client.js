@@ -512,10 +512,24 @@ function extrairLinhas(pagina) {
         ?? linha.getAttribute('data-id')
         ?? null;
 
+      // Instante da mensagem, do mesmo `data-pre-plain-text`: "[18:34,
+      // 08/09/2026] Nome: ". O navegador é aberto com locale pt-BR, então o
+      // formato é estável. É o que permite ignorar histórico depois de um
+      // reinício do servidor — sem isso, a memória do que já foi respondido
+      // some junto com o processo e comandos antigos são respondidos de novo.
+      let quando = null;
+      const pre = linha.querySelector('[data-pre-plain-text]')
+        ?.getAttribute('data-pre-plain-text');
+      const t = pre && /\[(\d{1,2}):(\d{2}),\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]/.exec(pre);
+      if (t) {
+        quando = new Date(+t[5], +t[4] - 1, +t[3], +t[1], +t[2]).getTime();
+      }
+
       return {
         id: id ?? `${nome ?? '?'}|${texto.trim().slice(0, 60)}`,
         direcao,
         remetente: nome,
+        quando,
         texto: texto.trim(),
       };
     }).filter((m) => m.texto);
@@ -537,7 +551,7 @@ export async function lerRecebidas(numero, { quantas = 8 } = {}) {
     return linhas
       .filter((m) => m.direcao === 'RECEBIDA')
       .slice(-quantas)
-      .map(({ id, texto }) => ({ id, texto }));
+      .map(({ id, texto, quando }) => ({ id, texto, quando }));
   });
 }
 
@@ -559,6 +573,7 @@ export async function espiarConversa(numero, { quantas = 14 } = {}) {
   return linhas.slice(-quantas).map((m) => ({
     direcao: m.direcao ?? '(sem direção — ignorada)',
     remetente: m.remetente,
+    quando: m.quando ? new Date(m.quando).toISOString() : null,
     texto: m.texto.replace(/\s+/g, ' ').slice(0, 60),
   }));
 }
