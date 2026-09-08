@@ -13,6 +13,7 @@ import multer from 'multer';
 import { config } from '../../config/env.js';
 import * as covers from '../../core/queue/covers.js';
 import * as recycle from '../../core/queue/recycle.js';
+import * as publishDiag from '../../core/publishing/diagnostico.js';
 
 const router = Router();
 
@@ -197,6 +198,19 @@ router.post('/:id/recycle', wrap(async (req, res) => {
   const r = await recycle.reciclar(account, { limite: 50 });
   await regenerate({ accountId: account.id });
   res.json(r);
+}));
+
+/**
+ * GET /:id/diagnostico — o que a página do Instagram mostra agora.
+ *
+ * Para quando a publicação falhar com "botão não encontrado": diz se a sessão
+ * caiu, quais seletores casam, e todos os rótulos clicáveis da tela — que é de
+ * onde sai o seletor novo quando o Instagram renomeia um botão.
+ */
+router.get('/:id/diagnostico', wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+  accounts.assertConnected(account);
+  res.json(await publishDiag.inspecionar(account.id));
 }));
 
 /** Define a conta usada pelas telas quando nenhuma está selecionada. */

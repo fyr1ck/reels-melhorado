@@ -296,9 +296,24 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
     await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
     await handleCheckpointIfNeeded(page, videoName);
 
+    // ESPERA a barra lateral existir antes de procurar o botão.
+    //
+    // `domcontentloaded` dispara quando o HTML chegou, e o Instagram é uma
+    // aplicação de página única: o menu só é desenhado depois que o JavaScript
+    // roda. Procurar nesse instante encontrava uma tela vazia e concluía que a
+    // interface tinha mudado — com a conta conectada e o botão a caminho.
+    await page.waitForSelector(SELECTORS.createButton.join(', '), {
+      state: 'visible',
+      timeout: 30_000,
+    }).catch(() => null);
+
     const opened = await clickFirstMatch(page, SELECTORS.createButton);
     if (!opened) {
-      throw new Error('Botão de "Nova publicação" não encontrado. A interface do Instagram pode ter mudado — verifique server/playwright/selectors.js.');
+      throw new Error(
+        'Botão de criar publicação não encontrado. Rode GET /api/accounts/<id>/diagnostico: '
+        + 'ele lista os rótulos que estão na tela agora, e o nome novo do botão sai de lá '
+        + '(ajuste server/playwright/selectors.js).',
+      );
     }
     await page.waitForTimeout(1000);
 

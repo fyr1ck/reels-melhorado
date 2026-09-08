@@ -38,13 +38,21 @@ export const SELECTORS = {
     ],
   },
 
-  // Botão "Criar" (antigo "Nova publicação") na barra lateral.
-  // `a[href="#"]:has-text("Criar")` foi o que casou na interface real em
-  // 07/09/2026 — os anteriores ficam como alternativa para outras versões.
+  // Botão de criar publicação na barra lateral.
+  //
+  // O rótulo muda de nome entre versões, e a lista está em ordem do mais
+  // recente para o mais antigo. Em 08/09/2026, na interface real, o rótulo é
+  // "Novo post" — nenhum dos anteriores casava, e o sintoma era a publicação
+  // falhando com "botão não encontrado" numa conta perfeitamente conectada.
+  //
+  // Quando isso voltar a acontecer, `GET /api/accounts/:id/diagnostico` lista
+  // todos os rótulos clicáveis da tela: o nome novo sai de lá.
   createButton: [
-    'svg[aria-label="Nova publicação"]',
+    'svg[aria-label="Novo post"]',
+    '[aria-label="Novo post"]',
     'svg[aria-label="New post"]',
     '[aria-label="New post"]',
+    'svg[aria-label="Nova publicação"]',
     '[aria-label="Nova publicação"]',
     'svg[aria-label="Criar"]',
     'svg[aria-label="Create"]',
