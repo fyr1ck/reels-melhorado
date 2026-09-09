@@ -512,6 +512,17 @@ async function toggleAiLabel(page, videoName) {
  * desistir e seguir sem legenda.
  */
 async function typeCaption(page, videoName, caption) {
+  // Compara ignorando espaço em branco: o campo do Instagram quebra linha
+  // sozinho e devolve os parágrafos de um jeito que não bate caractere a
+  // caractere com o texto de origem.
+  const semEspacos = (t) => (t || '').replace(/\s+/g, '');
+  const esperado = semEspacos(caption);
+
+  await logEvent({
+    video: videoName, action: 'LEGENDA_ENVIADA', status: 'INFO',
+    message: `${caption.length} caracteres, começa com: "${caption.slice(0, 40)}"`,
+  });
+
   for (let attempt = 1; attempt <= 2; attempt++) {
     const captionBox = await locateCaptionBox(page);
 
@@ -526,28 +537,45 @@ async function typeCaption(page, videoName, caption) {
       continue;
     }
 
-    await captionBox.pressSequentially(caption, { delay: 20 });
+    // Limpa o que a tentativa anterior deixou, senão o texto entra duplicado.
+    if (attempt > 1) {
+      await page.keyboard.press('Control+A').catch(() => {});
+      await page.keyboard.press('Delete').catch(() => {});
+    }
 
-    // Confere em loop (até 5s) se o texto realmente entrou no campo
-    let confirmed = false;
+    if (attempt === 1) {
+      // `insertText` entrega o texto inteiro de uma vez, pelo mesmo caminho de
+      // um "colar". `pressSequentially` simula tecla por tecla — e teclado não
+      // é como se escreve japonês: caractere que não existe numa tecla depende
+      // do IME, e é aí que a legenda tem chance de chegar truncada ou trocada.
+      await page.keyboard.insertText(caption);
+    } else {
+      await captionBox.pressSequentially(caption, { delay: 20 });
+    }
+
+    // Espera o texto assentar e confere se é MESMO o que foi mandado. A
+    // checagem antiga só exigia "campo não vazio", então uma legenda errada ou
+    // pela metade passava como preenchida.
+    let noCampo = '';
     for (let i = 0; i < 10; i++) {
-      const typedText = await captionBox.innerText().catch(() => '');
-      if (typedText && typedText.trim().length > 0) {
-        confirmed = true;
-        break;
-      }
+      noCampo = semEspacos(await captionBox.innerText().catch(() => ''));
+      if (noCampo === esperado) break;
       await page.waitForTimeout(500);
     }
 
-    if (confirmed) {
-      await logEvent({ video: videoName, action: 'LEGENDA_PREENCHIDA', status: 'INFO' });
+    if (noCampo === esperado) {
+      await logEvent({ video: videoName, action: 'LEGENDA_PREENCHIDA', status: 'INFO', message: `${caption.length} caracteres conferidos no campo.` });
       return;
     }
 
-    await logEvent({ video: videoName, action: 'LEGENDA_NAO_CONFIRMADA', status: 'WARNING', message: `Tentativa ${attempt}: texto não apareceu no campo após digitação.` });
+    await logEvent({
+      video: videoName, action: 'LEGENDA_DIVERGENTE', status: 'WARNING',
+      message: `Tentativa ${attempt}: o campo ficou com "${noCampo.slice(0, 50)}" `
+        + `(${noCampo.length} caracteres) e o esperado era "${esperado.slice(0, 50)}" (${esperado.length}).`,
+    });
   }
 
-  await logEvent({ video: videoName, action: 'LEGENDA_FALHOU', status: 'WARNING', message: 'Não foi possível confirmar a legenda após 2 tentativas; publicação seguirá sem legenda.' });
+  await logEvent({ video: videoName, action: 'LEGENDA_FALHOU', status: 'WARNING', message: 'A legenda no campo não bateu com a enviada, nas duas tentativas.' });
 }
 
 /**
