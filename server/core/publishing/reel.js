@@ -244,6 +244,56 @@ async function clickNaJanela(page, selectors, options = {}) {
 }
 
 /**
+ * Escolhe o recorte "Original" na tela de corte.
+ *
+ * O Instagram abre todo vídeo já em 1:1 — quadrado. Um reel vertical ia ao ar
+ * com as bordas cortadas, e nada no painel denunciava: o corte é decisão do
+ * Instagram, não do arquivo.
+ *
+ * Vale para toda conta, sem opção de desligar. Mandar o vídeo inteiro é o que
+ * se espera de uma automação de reels.
+ *
+ * Nunca lança. Recorte errado é ruim; publicação travada por causa de um menu
+ * que mudou de nome é pior.
+ */
+async function escolherRecorteOriginal(page, videoName, timeoutMs = 120_000) {
+  const limite = Date.now() + timeoutMs;
+
+  // Espera a tela de corte existir: logo depois de escolher o arquivo o vídeo
+  // ainda está subindo e nada dela está na tela.
+  while (Date.now() < limite) {
+    if (await clickNaJanela(page, SELECTORS.cropButton)) break;
+
+    // Passou direto para a legenda: não há tela de corte neste fluxo.
+    if (await naTelaDaLegenda(page)) {
+      await logEvent({
+        video: videoName, action: 'RECORTE_NAO_ENCONTRADO', status: 'WARNING',
+        message: 'A tela de corte não apareceu; o vídeo vai com o recorte que o Instagram escolher.',
+      });
+      return;
+    }
+    await page.waitForTimeout(1000);
+  }
+
+  await page.waitForTimeout(600);
+
+  const escolheu = await clickNaJanela(page, SELECTORS.cropOriginal);
+
+  await logEvent({
+    video: videoName,
+    action: escolheu ? 'RECORTE_ORIGINAL' : 'RECORTE_NAO_ENCONTRADO',
+    status: escolheu ? 'INFO' : 'WARNING',
+    message: escolheu
+      ? 'Recorte "Original": o vídeo vai inteiro, sem corte quadrado.'
+      : 'O menu de recorte abriu mas "Original" não estava nele — confira server/playwright/selectors.js.',
+  });
+
+  // Fecha o menu, senão ele fica por cima do "Avançar".
+  if (!escolheu) await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(400);
+}
+
+/**
  * Espera o botão APARECER e clica.
  *
  * Olhar uma vez e desistir não serve aqui: logo depois de escolher o arquivo o
@@ -697,6 +747,10 @@ export async function publishReel({
     // loop com folga. Se houver uma capa personalizada, ela é aplicada assim
     // que a tela com "Foto da capa" aparecer (não necessariamente a
     // primeira), antes de seguir clicando em "Avançar".
+    // O recorte vem antes de tudo: a tela de corte é a primeira depois do
+    // upload, e é nela que o Instagram já deixa o vídeo quadrado.
+    await escolherRecorteOriginal(page, videoName);
+
     let coverAttempted = !coverPath;
     for (let passo = 1; passo <= 4; passo++) {
       if (await naTelaDaLegenda(page)) break;

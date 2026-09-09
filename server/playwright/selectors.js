@@ -109,6 +109,29 @@ export const SELECTORS = {
     'text=Cover photo',
   ],
 
+  // Botão que abre o menu de recorte, no canto inferior esquerdo da tela de
+  // corte (o ícone de quadrado com as setas nos cantos).
+  //
+  // O Instagram abre TODO vídeo já recortado em 1:1. Sem passar por aqui, um
+  // reel vertical vai ao ar quadrado, com as bordas cortadas — e nada no
+  // arquivo denuncia isso, porque o corte é decisão do Instagram.
+  cropButton: [
+    'svg[aria-label="Selecionar recorte"]',
+    '[aria-label="Selecionar recorte"]',
+    'svg[aria-label="Select crop"]',
+    '[aria-label="Select crop"]',
+    'svg[aria-label="Cortar"]',
+    'svg[aria-label="Crop"]',
+  ],
+
+  // A opção "Original" dentro daquele menu. Match EXATO: o `text=` do
+  // Playwright casa por substring, e "Original" aparece dentro de outras
+  // palavras com facilidade.
+  cropOriginal: [
+    'text="Original"',
+    'role=button[name="Original"i]',
+  ],
+
   // Botão "Avançar" — aparece nas telas de corte/edição/filtro
   nextButton: [
     'text=Avançar',
