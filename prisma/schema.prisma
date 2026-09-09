@@ -64,6 +64,12 @@ model Account {
   /// Sorteia o próximo vídeo em vez de seguir a ordem da fila.
   randomOrder     Boolean @default(false)
 
+  /// Liga o "Adicionar rótulo de IA" do Instagram antes de publicar.
+  /// O Instagram exige esse rótulo em foto e vídeo realistas feitos com IA;
+  /// como isso é característica do CONTEÚDO da conta, e não de cada vídeo,
+  /// fica aqui e vale para tudo que ela publica.
+  aiLabel Boolean @default(false)
+
   // --- reciclagem de conteúdo ---
   /// Devolve à fila vídeos publicados há mais de N dias. Página de meme não
   /// vive de material inédito: quase ninguém que segue hoje viu o post de dois

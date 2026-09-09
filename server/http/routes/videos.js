@@ -306,6 +306,7 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
       caption: video.caption || video.account.fallbackCaption
         || (await prisma.settings.findUnique({ where: { id: 1 } }))?.defaultCaption || '',
       coverPath: await covers.resolveFor(video),
+      aiLabel: video.account.aiLabel,
     });
 
     const moved = moveTo(video.filepath, config.paths.published);

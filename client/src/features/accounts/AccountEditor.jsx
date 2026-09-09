@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Save, AtSign, FileText, Shuffle, Image, Trash2 } from 'lucide-react';
+import { Save, AtSign, FileText, Shuffle, Image, Trash2, Sparkles } from 'lucide-react';
 import { useMutation } from '../../hooks/useQuery.js';
 import { useToast } from '../../hooks/useToast.jsx';
 import { api } from '../../lib/api.js';
@@ -26,6 +26,7 @@ export default function AccountEditor({ account, onSaved }) {
       label: account.label ?? '',
       fallbackCaption: account.fallbackCaption ?? '',
       randomOrder: account.randomOrder,
+      aiLabel: account.aiLabel ?? false,
     });
   }, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,6 +86,16 @@ export default function AccountEditor({ account, onSaved }) {
           placeholder="Deixe vazio para usar a legenda geral da instalação."
         />
       </Field>
+
+      {/* Logo abaixo da legenda porque é a ordem em que o Instagram mostra:
+          na tela de publicação, o interruptor fica embaixo do campo de texto. */}
+      <Checkbox
+        className="mt"
+        label={<><Sparkles size={12} /> Marcar como conteúdo feito com IA</>}
+        hint="Liga o “Adicionar rótulo de IA” do Instagram em tudo que esta conta publicar. O Instagram exige o rótulo em foto e vídeo realistas gerados por IA, e quem vê o post enxerga a marcação."
+        checked={form.aiLabel}
+        onChange={(e) => set('aiLabel', e.target.checked)}
+      />
 
       {/* Capa por conta: cada perfil costuma ter identidade visual própria, e
           uma capa única para a instalação inteira só serve com uma conta. */}

@@ -60,6 +60,7 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.label !== undefined) data.label = v.str(b.label, { field: 'Apelido', min: 0, max: 60 }) || null;
   if (b.enabled !== undefined) data.enabled = v.bool(b.enabled, { field: 'Habilitada' });
   if (b.randomOrder !== undefined) data.randomOrder = v.bool(b.randomOrder, { field: 'Ordem aleatória' });
+  if (b.aiLabel !== undefined) data.aiLabel = v.bool(b.aiLabel, { field: 'Rótulo de IA' });
   if (b.fallbackCaption !== undefined) {
     data.fallbackCaption = v.str(b.fallbackCaption, { field: 'Legenda', min: 0, max: 2200 }) || null;
   }

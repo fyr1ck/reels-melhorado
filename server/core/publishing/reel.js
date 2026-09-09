@@ -202,6 +202,78 @@ async function ensureFocused(page, captionBox) {
 }
 
 /**
+ * Liga o "Adicionar rótulo de IA" na tela da legenda.
+ *
+ * O Instagram exige esse rótulo em foto e vídeo realistas gerados por IA. O
+ * interruptor fica logo abaixo do campo de legenda, e é um `div` com classes
+ * geradas — o texto ao lado dele é o único ponto de apoio estável, então a
+ * busca começa por ele e sobe até a linha que contém o controle.
+ *
+ * NÃO derruba a publicação quando não encontra: fica um aviso em Atividade e o
+ * vídeo vai ao ar. Falhar aqui esgotaria as tentativas e pausaria a conta por
+ * causa de um interruptor — mas o aviso importa, porque quem ligou a opção
+ * precisa saber que o rótulo não foi aplicado naquele post.
+ */
+async function toggleAiLabel(page, videoName) {
+  for (const texto of SELECTORS.aiLabelText) {
+    const rotulo = page.getByText(texto, { exact: false }).first();
+    if ((await rotulo.count()) === 0) continue;
+
+    await rotulo.scrollIntoViewIfNeeded().catch(() => {});
+
+    // Sobe até o primeiro ancestral que contenha um controle, e pega o
+    // controle de dentro dele. Procurar na página inteira acertaria o
+    // interruptor de outra opção.
+    const linha = rotulo.locator(
+      'xpath=ancestor::div[.//input[@type="checkbox"] or .//*[@role="switch"]][1]',
+    ).first();
+    if ((await linha.count()) === 0) continue;
+
+    const controle = linha.locator(SELECTORS.aiLabelSwitch.join(', ')).first();
+    if ((await controle.count()) === 0) continue;
+
+    // Já ligado? Clicar de novo desligaria.
+    const marcado = await controle.isChecked().catch(async () => {
+      const aria = await controle.getAttribute('aria-checked').catch(() => null);
+      return aria === 'true';
+    });
+
+    if (marcado) {
+      await logEvent({ video: videoName, action: 'ROTULO_IA_JA_LIGADO', status: 'INFO' });
+      return true;
+    }
+
+    await controle.click({ timeout: 5000 }).catch(async () => {
+      // Alguns interruptores só respondem ao clique no rótulo.
+      await rotulo.click({ timeout: 5000 }).catch(() => {});
+    });
+    await page.waitForTimeout(600);
+
+    const agora = await controle.isChecked().catch(async () => {
+      const aria = await controle.getAttribute('aria-checked').catch(() => null);
+      return aria === 'true';
+    });
+
+    if (agora) {
+      await logEvent({ video: videoName, action: 'ROTULO_IA_LIGADO', status: 'INFO' });
+      return true;
+    }
+
+    await logEvent({
+      video: videoName, action: 'ROTULO_IA_NAO_CONFIRMADO', status: 'WARNING',
+      message: 'Achei o interruptor de rótulo de IA mas não consegui confirmar que ligou. O vídeo foi publicado SEM o rótulo.',
+    });
+    return false;
+  }
+
+  await logEvent({
+    video: videoName, action: 'ROTULO_IA_NAO_ENCONTRADO', status: 'WARNING',
+    message: 'A opção "Adicionar rótulo de IA" não apareceu nesta tela. O vídeo foi publicado SEM o rótulo — confira server/playwright/selectors.js se o Instagram mudou o texto.',
+  });
+  return false;
+}
+
+/**
  * Digita a legenda de forma confiável num editor rich-text (Draft.js/Lexical),
  * confirmando o resultado antes de seguir. .fill() não serve aqui porque não
  * dispara os eventos de teclado que esse tipo de editor espera; por isso
@@ -287,7 +359,7 @@ async function waitForAnyText(page, textPatterns, timeoutMs) {
  * Lança erro em qualquer etapa que falhar ou que não puder ser confirmada —
  * a responsabilidade de decidir sobre novas tentativas é do schedulerService.
  */
-export async function publishReel({ filepath, caption, videoName, coverPath, accountId }) {
+export async function publishReel({ filepath, caption, videoName, coverPath, accountId, aiLabel = false }) {
   const start = Date.now();
   const context = await contextFor(accountId);
   const page = await context.newPage();
@@ -358,6 +430,12 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
 
     if (caption) {
       await typeCaption(page, videoName, caption);
+    }
+
+    // Depois da legenda e antes de compartilhar: é onde o interruptor está na
+    // tela, e ligá-lo antes da legenda arriscaria o campo perder o foco.
+    if (aiLabel) {
+      await toggleAiLabel(page, videoName);
     }
 
     const shared = await clickFirstMatch(page, SELECTORS.shareButton);

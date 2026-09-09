@@ -395,6 +395,7 @@ async function run(publication) {
         videoName: video.filename,
         caption,
         coverPath,
+        aiLabel: account.aiLabel,
       });
 
       if (result.ok) {

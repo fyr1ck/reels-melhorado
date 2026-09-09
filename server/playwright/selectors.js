@@ -69,6 +69,22 @@ export const SELECTORS = {
     'text=Post',
   ],
 
+  // Interruptor "Adicionar rótulo de IA", na tela da legenda.
+  //
+  // O texto é o único ponto estável: o interruptor em si é um `div` com
+  // classes geradas. Daí a busca ser pelo rótulo, subindo até a linha que o
+  // contém e procurando o controle lá dentro.
+  aiLabelText: [
+    'Adicionar rótulo de IA',
+    'Add AI label',
+    'Adicionar etiqueta de IA',
+  ],
+  aiLabelSwitch: [
+    'input[type="checkbox"]',
+    '[role="switch"]',
+    'div[role="button"][tabindex="0"]',
+  ],
+
   // Input de arquivo (upload do vídeo) — usado só como fallback
   fileInput: 'input[type="file"]',
 
