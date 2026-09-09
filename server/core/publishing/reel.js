@@ -336,18 +336,27 @@ async function primeiroPostDoPerfil(page, username) {
 /**
  * Confere no perfil que o reel foi mesmo ao ar.
  *
- * Olha a IDADE do post mais recente em vez de comparar com um link capturado
- * antes de publicar. Isso muda duas coisas que importavam:
+ * Olha se o post mais recente é POSTERIOR ao início desta publicação, em vez
+ * de comparar com um link capturado antes de subir o vídeo. Isso muda duas
+ * coisas que importavam:
  *
  * - não custa uma navegação ao perfil antes do upload, no caminho crítico;
  * - não exige uma segunda aba aberta durante a publicação inteira.
  *
+ * O corte é o instante de início, não uma idade máxima. Uma janela frouxa de
+ * "15 minutos" aceitava o post ANTERIOR da mesma conta — a automação publica
+ * de 10 em 10 minutos, então o post de 11 minutos atrás ainda cabia nela, e a
+ * conferência dava por publicado um reel que não tinha ido ao ar.
+ *
+ * A margem de 60s existe porque o relógio do Instagram não é o desta máquina.
+ *
  * A aba é aberta aqui e fechada antes de retornar — nunca sobra uma segunda
  * janela no Chrome.
  */
-async function conferirNoPerfil(context, username, videoName, timeoutMs = 120_000) {
+async function conferirNoPerfil(context, username, videoName, desde, timeoutMs = 120_000) {
   const aba = await context.newPage();
   const limite = Date.now() + timeoutMs;
+  const corte = desde - 60_000;
 
   try {
     while (Date.now() < limite) {
@@ -360,12 +369,13 @@ async function conferirNoPerfil(context, username, videoName, timeoutMs = 120_00
 
         const quando = await aba.locator('time[datetime]').first()
           .getAttribute('datetime').catch(() => null);
-        const idadeMin = quando ? (Date.now() - Date.parse(quando)) / 60_000 : null;
+        const publicadoEm = quando ? Date.parse(quando) : NaN;
 
-        if (idadeMin !== null && idadeMin >= 0 && idadeMin <= 15) {
+        if (Number.isFinite(publicadoEm) && publicadoEm >= corte) {
           await logEvent({
             video: videoName, action: 'CONFIRMADO_NO_PERFIL', status: 'INFO',
-            message: `O post mais recente de @${username} tem ${idadeMin.toFixed(1)} min: é este.`,
+            message: `O post mais recente de @${username} é de ${new Date(publicadoEm).toLocaleTimeString('pt-BR')}, `
+              + 'depois do início deste envio.',
           });
           return true;
         }
@@ -751,7 +761,7 @@ export async function publishReel({
     // recusado. Foi assim que o painel marcou como publicado um reel que não
     // estava no perfil. Aqui — e só aqui — vale a ida ao perfil.
     if (comoConfirmou === 'JANELA' && username) {
-      if (await conferirNoPerfil(context, username, videoName)) {
+      if (await conferirNoPerfil(context, username, videoName, start)) {
         return { ok: true, durationMs: Date.now() - start };
       }
 

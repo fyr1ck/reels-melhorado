@@ -10,6 +10,28 @@ export function ensureDirs() {
 }
 
 /** Nome único preservando a extensão, para dois uploads não se sobrescreverem. */
+/**
+ * Conserta o nome do arquivo que chega num upload.
+ *
+ * O multipart/form-data entrega o nome como bytes crus, e o multer os lê como
+ * latin1. Um nome em japonês, árabe ou com acento chega embaralhado — "アニメ"
+ * vira "ã¢ãã¡" — e era esse nome quebrado que aparecia no painel e virava
+ * legenda quando alguém copiava de lá.
+ *
+ * A reinterpretação só acontece quando é segura:
+ *
+ * - nome só com ASCII não tem o que reinterpretar;
+ * - se os bytes NÃO formam UTF-8 válido, a decodificação produz U+FFFD e o
+ *   nome original é mantido. É o caso de um nome latin1 de verdade ("café"),
+ *   que já chegou certo e seria destruído pela conversão.
+ */
+export function nomeOriginal(nome) {
+  if (!nome || !/[-ÿ]/.test(nome)) return nome;
+
+  const reinterpretado = Buffer.from(nome, 'latin1').toString('utf8');
+  return reinterpretado.includes('�') ? nome : reinterpretado;
+}
+
 export function uniqueName(original) {
   const stamp = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
   return `${stamp}${path.extname(original || '')}`;

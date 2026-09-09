@@ -5,7 +5,7 @@ import path from 'path';
 import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { wrap } from '../middleware/errors.js';
-import { uniqueName, ensureDirs, sizeOf } from '../../lib/files.js';
+import { uniqueName, nomeOriginal, ensureDirs, sizeOf } from '../../lib/files.js';
 import { probe } from '../../lib/media.js';
 import * as accounts from '../../core/accounts/accounts.js';
 import { regenerate, comNavegador } from '../../core/scheduling/scheduler.js';
@@ -28,7 +28,7 @@ const router = Router();
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, config.paths.pending),
-    filename: (req, file, cb) => cb(null, uniqueName(file.originalname)),
+    filename: (req, file, cb) => cb(null, uniqueName(nomeOriginal(file.originalname))),
   }),
   fileFilter: (req, file, cb) => {
     // Aceita por mimetype OU por extensão. Confiar só no mimetype rejeitava
@@ -36,7 +36,7 @@ const upload = multer({
     // vários navegadores e sistemas, e o usuário via "formato não suportado"
     // para um vídeo perfeitamente válido.
     const porTipo = /^video\/(mp4|quicktime|x-matroska|webm|x-m4v)$/.test(file.mimetype);
-    const porExtensao = /\.(mp4|mov|mkv|webm|m4v)$/i.test(file.originalname || '');
+    const porExtensao = /\.(mp4|mov|mkv|webm|m4v)$/i.test(nomeOriginal(file.originalname) || '');
     const ok = porTipo || porExtensao;
     cb(ok ? null : new ValidationError(
       `Formato não suportado (${file.mimetype}). Envie MP4, MOV, MKV, WebM ou M4V.`,
@@ -131,12 +131,12 @@ router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
       if (outras.length) {
         try { fs.unlinkSync(file.path); } catch { /* pode já não existir */ }
         skipped.push({
-          filename: file.originalname,
+          filename: nomeOriginal(file.originalname),
           reason: 'DUPLICADO',
           accounts: outras.map((c) => c.username),
         });
         await logger.warn({
-          action: 'UPLOAD_DUPLICADO_BLOQUEADO', accountId, videoName: file.originalname,
+          action: 'UPLOAD_DUPLICADO_BLOQUEADO', accountId, videoName: nomeOriginal(file.originalname),
           message: `Mesmo conteúdo já está na fila de @${outras.map((c) => c.username).join(', @')}.`,
         });
         continue;
@@ -147,7 +147,7 @@ router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
     const video = await prisma.video.create({
       data: {
         accountId,
-        filename: file.originalname,
+        filename: nomeOriginal(file.originalname),
         filepath: file.path,
         mediaType,
         sortOrder: proxima.get(accountId),

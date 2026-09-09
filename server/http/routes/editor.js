@@ -5,7 +5,7 @@ import path from 'path';
 import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { wrap } from '../middleware/errors.js';
-import { uniqueName, sizeOf, ensureDirs } from '../../lib/files.js';
+import { uniqueName, nomeOriginal, sizeOf, ensureDirs } from '../../lib/files.js';
 import { probe } from '../../lib/media.js';
 import * as batch from '../../core/editor/batch.js';
 import { defaultTemplateConfig, mergeTemplateConfig } from '../../core/editor/layout.js';
@@ -21,7 +21,7 @@ const router = Router();
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, config.paths.editorSource),
-    filename: (req, file, cb) => cb(null, uniqueName(file.originalname)),
+    filename: (req, file, cb) => cb(null, uniqueName(nomeOriginal(file.originalname))),
   }),
   limits: { fileSize: config.limits.uploadBytes },
 });
@@ -41,7 +41,7 @@ router.post('/sources', upload.array('videos', 200), wrap(async (req, res) => {
     const meta = await probe(f.path).catch(() => ({}));
     criados.push(await prisma.sourceVideo.create({
       data: {
-        filename: f.originalname, filepath: f.path,
+        filename: nomeOriginal(f.originalname), filepath: f.path,
         sizeBytes: sizeOf(f.path), durationSec: meta.durationSec ?? null,
         width: meta.width ?? null, height: meta.height ?? null,
       },
@@ -63,7 +63,7 @@ router.delete('/sources/:id', wrap(async (req, res) => {
 const assetUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, config.paths.editorAssets),
-    filename: (req, file, cb) => cb(null, uniqueName(file.originalname)),
+    filename: (req, file, cb) => cb(null, uniqueName(nomeOriginal(file.originalname))),
   }),
   fileFilter: (req, file, cb) => {
     const ok = /^image\/(jpeg|jpg|png|webp)$/.test(file.mimetype);
