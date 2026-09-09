@@ -311,6 +311,7 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
     // mesmo tempo disputam a mesma janela do navegador.
     const result = await comNavegador(async () => publishReel({
       accountId: video.accountId,
+      username: video.account.username,
       filepath: video.filepath,
       videoName: video.filename,
       caption: video.caption || video.account.fallbackCaption

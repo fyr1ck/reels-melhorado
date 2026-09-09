@@ -477,6 +477,7 @@ async function run(publication) {
 
       const result = await publishReel({
         accountId: account.id,
+        username: account.username,
         filepath: video.filepath,
         videoName: video.filename,
         caption,
@@ -517,6 +518,31 @@ async function run(publication) {
         videoName: video.filename, attempt, message: err.message,
         durationMs: Date.now() - started,
       });
+      // Falha que não adianta repetir — limite do Instagram, por exemplo.
+      // Insistir gasta as tentativas e agrava o bloqueio. Devolve o vídeo à
+      // fila para mais tarde, sem marcar falha nem pausar a conta.
+      if (err.semRetentativa) {
+        await prisma.publication.update({
+          where: { id: publication.id },
+          data: {
+            status: VIDEO_STATUS.SCHEDULED,
+            errorMessage: err.message,
+            nextAttemptAt: new Date(Date.now() + 60 * 60_000),
+          },
+        });
+        await prisma.video.update({
+          where: { id: video.id },
+          data: { status: VIDEO_STATUS.SCHEDULED },
+        });
+        await notify.avisar({
+          evento: notify.EVENTO.INTERVENCAO,
+          titulo: 'Instagram interrompeu o envio',
+          conta: account.username,
+          mensagem: 'Parece limite de publicação. Vou tentar de novo daqui a 1 hora — considere aumentar o intervalo.',
+        });
+        return;
+      }
+
       // Recuo antes da próxima tentativa. Sem ele as 3 tentativas queimavam
       // em segundos: uma queda de rede de 10s bastava para mandar o vídeo a
       // /failed e pausar a conta inteira.

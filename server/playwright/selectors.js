@@ -98,10 +98,15 @@ export const SELECTORS = {
 
   // Título da tela onde o Instagram permite escolher a capa do Reel
   // (aparece logo após o upload do vídeo, antes das telas de filtro).
+  // Título da tela onde se escolhe a capa do reel.
+  //
+  // `text=Cover` sozinho saiu da lista: o `text=` do Playwright casa por
+  // SUBSTRING, então bastaria outra tela conter "cover" em qualquer palavra
+  // para dar falso positivo — e um falso positivo aqui enviaria a imagem da
+  // capa como conteúdo do post.
   coverHeading: [
     'text=Foto da capa',
     'text=Cover photo',
-    'text=Cover',
   ],
 
   // Botão "Avançar" — aparece nas telas de corte/edição/filtro

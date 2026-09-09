@@ -113,6 +113,7 @@ async function selectCustomCover(page, videoName, coverAbsolutePath) {
   const headingVisible = await isAnyVisible(page, SELECTORS.coverHeading);
   if (!headingVisible) return false;
 
+
   try {
     const [fileChooser] = await Promise.all([
       page.waitForEvent('filechooser', { timeout: 8000 }),
@@ -197,6 +198,57 @@ async function ensureFocused(page, captionBox) {
 
     const isFocused = await page.evaluate((el) => document.activeElement === el, await captionBox.elementHandle()).catch(() => false);
     if (isFocused) return true;
+  }
+  return false;
+}
+
+/**
+ * Link do post mais recente do perfil.
+ *
+ * É a única prova de verdade de que um reel foi ao ar. Tudo o que acontece
+ * dentro da janela de criação — texto de sucesso, a janela fechar — diz que o
+ * Instagram ACEITOU o envio, não que ele publicou: a janela também fecha
+ * quando ele recusa. Foi assim que o painel marcou como publicado um reel que
+ * não estava no perfil.
+ *
+ * Devolve null quando o perfil não tem post nenhum, o que também é uma
+ * resposta útil: qualquer link que apareça depois é novo.
+ */
+async function primeiroPostDoPerfil(page, username) {
+  await page.goto(`https://www.instagram.com/${username}/`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  }).catch(() => {});
+
+  // A grade é montada por JavaScript; sem esta espera lê-se uma página vazia
+  // e conclui-se que o perfil não tem nada.
+  await page.waitForSelector('main a[href*="/reel/"], main a[href*="/p/"]', { timeout: 20_000 })
+    .catch(() => null);
+
+  return page.locator('main a[href*="/reel/"], main a[href*="/p/"]').first()
+    .getAttribute('href').catch(() => null);
+}
+
+/**
+ * Confirma no PERFIL que o reel foi ao ar.
+ *
+ * Compara com o link capturado antes de publicar. O Instagram leva alguns
+ * segundos para processar o vídeo, por isso a espera em laço.
+ */
+async function confirmarNoPerfil(page, username, antes, videoName, timeoutMs = 120_000) {
+  const limite = Date.now() + timeoutMs;
+
+  while (Date.now() < limite) {
+    const agora = await primeiroPostDoPerfil(page, username);
+
+    if (agora && agora !== antes) {
+      await logEvent({
+        video: videoName, action: 'CONFIRMADO_NO_PERFIL', status: 'INFO',
+        message: `O post mais recente de @${username} mudou para ${agora}.`,
+      });
+      return true;
+    }
+    await page.waitForTimeout(6000);
   }
   return false;
 }
@@ -400,10 +452,21 @@ async function waitForAnyText(page, textPatterns, timeoutMs) {
  * Lança erro em qualquer etapa que falhar ou que não puder ser confirmada —
  * a responsabilidade de decidir sobre novas tentativas é do schedulerService.
  */
-export async function publishReel({ filepath, caption, videoName, coverPath, accountId, aiLabel = false }) {
+export async function publishReel({
+  filepath, caption, videoName, coverPath, accountId, username, aiLabel = false,
+}) {
   const start = Date.now();
   const context = await contextFor(accountId);
   const page = await context.newPage();
+
+  // A verificação do perfil roda numa ABA SEPARADA.
+  //
+  // Eu tinha feito a página da publicação passar pelo perfil antes de começar,
+  // e isso quebrou um fluxo que funcionava: o upload seguia, mas a tela da
+  // legenda nunca aparecia. Navegação a mais no caminho crítico é risco puro —
+  // a conferência não vale atrapalhar o que ela deveria só observar.
+  const abaPerfil = username ? await context.newPage() : null;
+  const postAntes = abaPerfil ? await primeiroPostDoPerfil(abaPerfil, username) : null;
 
   try {
     await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
@@ -488,6 +551,40 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
 
     await handleCheckpointIfNeeded(page, videoName);
 
+    // A janela de criação ainda está aberta?
+    //
+    // Se ela SUMIU depois de o arquivo ter sido enviado, o Instagram
+    // interrompeu o envio — e a tela por baixo é o feed. É o sinal típico de
+    // limite de publicação atingido: acontece depois de muitos envios em pouco
+    // tempo, e contando as tentativas que falharam.
+    //
+    // Distinguir isso importa porque a reação certa é OPOSTA à de uma falha
+    // comum: repetir piora, e o agendador tentaria três vezes por vídeo.
+    const janelaAberta = await page.locator(SELECTORS.createDialog.join(', '))
+      .count().catch(() => 1);
+
+    if (janelaAberta === 0) {
+      const telaAtual = await page.evaluate(
+        () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      ).catch(() => '');
+
+      await logEvent({
+        video: videoName, action: 'ENVIO_INTERROMPIDO', status: 'ERROR',
+        message: `O Instagram fechou a janela de criação depois do upload. Tela: "${telaAtual}"`,
+      });
+
+      const err = new Error(
+        'O Instagram interrompeu o envio e fechou a janela de criação. Isso costuma ser limite de '
+        + 'publicação: acontece depois de muitos envios em pouco tempo, contando as tentativas que '
+        + 'falharam. Pare a automação desta conta por algumas horas e volte com um intervalo maior. '
+        + 'Insistir agora piora.',
+      );
+      // Marca para o agendador não gastar as três tentativas nem pausar a
+      // conta como se fosse defeito dela.
+      err.semRetentativa = true;
+      throw err;
+    }
+
     if (caption) {
       await typeCaption(page, videoName, caption);
     }
@@ -505,7 +602,39 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
 
     await logEvent({ video: videoName, action: 'AGUARDANDO_CONFIRMACAO', status: 'INFO', message: 'Aguardando confirmação observável de sucesso.' });
 
-    const confirmed = await confirmarPublicacao(page, videoName, 90_000);
+    // Primeiro o sinal rápido: a janela fechar ou o texto de sucesso aparecer
+    // indica que o Instagram ACEITOU o envio. Não prova que publicou.
+    const aceitou = await confirmarPublicacao(page, videoName, 90_000);
+
+    // A prova é o perfil. Sem username não há como verificar, e nesse caso o
+    // sinal fraco vale — mas fica registrado que a confirmação foi fraca.
+    if (abaPerfil) {
+      const noAr = aceitou
+        ? await confirmarNoPerfil(abaPerfil, username, postAntes, videoName)
+        : false;
+
+      if (!noAr) {
+        const naTela = await page.evaluate(
+          () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+        ).catch(() => '(não foi possível ler)');
+
+        throw new Error(
+          aceitou
+            ? `O Instagram aceitou o envio mas o reel não apareceu no perfil de @${username} em 2 minutos. `
+              + 'Ele pode estar em processamento — confira o perfil antes de tentar de novo.'
+            : `Não consegui confirmar a publicação. A tela mostrava: "${naTela}"`,
+        );
+      }
+
+      return { ok: true, durationMs: Date.now() - start };
+    }
+
+    await logEvent({
+      video: videoName, action: 'CONFIRMACAO_FRACA', status: 'WARNING',
+      message: 'Sem o @ da conta, não deu para conferir no perfil. Confirmado só pelo fechamento da janela.',
+    });
+
+    const confirmed = aceitou;
 
     if (!confirmed) {
       // Diz o que ESTAVA na tela quando desistiu. Sem isso, "não confirmei"
@@ -523,6 +652,8 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
 
     return { ok: true, durationMs: Date.now() - start };
   } finally {
+    await abaPerfil?.close().catch(() => {});
+
     // Fecha a aba, não o contexto: a sessão segue viva para a próxima
     // publicação da mesma conta. Quem encerra o navegador é o ciclo de
     // parar/pausar a automação.
