@@ -6,6 +6,7 @@ import {
 import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
+import { usePreferencia, useConjuntoPreferido } from '../../hooks/usePreferencia.js';
 import { useToast } from '../../hooks/useToast.jsx';
 import { useConfirm } from '../../hooks/useConfirm.jsx';
 import { api } from '../../lib/api.js';
@@ -51,8 +52,11 @@ export default function Queue() {
 
   // Distribuição: em vez de mandar o lote inteiro para uma conta, reparte
   // entre as escolhidas — um vídeo por conta, sem repetir conteúdo.
-  const [distribuir, setDistribuir] = useState(false);
-  const [contasSel, setContasSel] = useState(new Set());
+  //
+  // Guardado no navegador: com `useState`, trocar de seção no menu desmontava
+  // a tela e a escolha voltava para "uma conta só" sozinha.
+  const [distribuir, setDistribuir] = usePreferencia('rm.distribuir', false);
+  const [contasSel, setContasSel] = useConjuntoPreferido('rm.distribuirContas');
 
   const [busca, setBusca] = useState('');
   // Índice do cartão sendo arrastado. Guardar o índice (e não o id) deixa a

@@ -91,7 +91,11 @@ export default function Schedule() {
   }
 
   async function salvarRitmo(proximo) {
-    const r = proximo ?? ritmo;
+    // `onBlur={salvarRitmo}` entregava o evento do React aqui, e o evento não
+    // tem `valor` nem `unidade`: o intervalo virava undefined, o PATCH saía
+    // vazio e o valor digitado voltava ao anterior sem nenhum erro na tela.
+    // Só os atalhos (que passam um objeto) funcionavam.
+    const r = (proximo && typeof proximo.valor === 'number') ? proximo : ritmo;
     const intervalMinutes = r.unidade === 'h' ? r.valor * 60 : r.valor;
     try {
       await api.patch(`/accounts/${accountId}`, { intervalMinutes });
@@ -289,7 +293,7 @@ export default function Schedule() {
                 onChange={(e) => setRitmo((r) => ({
                   ...r, valor: Math.min(maximo, Math.max(1, Number(e.target.value) || 1)),
                 }))}
-                onBlur={salvarRitmo}
+                onBlur={() => salvarRitmo()}
               />
               <Select
                 value={ritmo.unidade}
