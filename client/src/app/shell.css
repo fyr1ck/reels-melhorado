@@ -222,3 +222,24 @@
   .nav__name, .nav__account, .nav__group-label, .nav__foot, .nav__item span { display: none; }
   .nav__item { justify-content: center; }
 }
+
+/* Contador de contas publicando, na barra de topo. */
+.top__ativas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--text-3);
+  cursor: default;
+}
+.top__ativas.is-on {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.22);
+}
+@media (max-width: 900px) { .top__ativas { display: none; } }

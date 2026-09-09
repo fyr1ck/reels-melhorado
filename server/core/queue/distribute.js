@@ -14,13 +14,18 @@ import { VIDEO_STATUS } from '../../lib/enums.js';
  */
 
 /**
- * Reparte itens entre contas, equilibrando pelo tamanho atual da fila.
+ * Reparte itens entre contas, em rodízio.
  *
- * Rodízio puro (1ª conta, 2ª, 3ª, repete) desequilibra quando as filas já
- * estão desiguais: a conta com 40 pendentes receberia tanto quanto a que tem
- * 2. Aqui cada item vai para quem tem a MENOR fila no momento, contando o que
- * já foi atribuído nesta mesma chamada — o resultado se aproxima de filas do
- * mesmo tamanho, e vira rodízio simples quando todas começam iguais.
+ * Um lote de 4 vídeos em 2 contas vira 2 e 2. É o que "repartir o lote"
+ * significa, e é o que a pessoa espera ao mandar 40 vídeos para 4 perfis.
+ *
+ * A ordem do rodízio começa pela conta com a MENOR fila, então quando as filas
+ * estão desiguais o desempate favorece quem tem menos — sem deixar de dividir.
+ *
+ * Uma versão anterior equalizava as filas: cada item ia para quem tivesse menos
+ * vídeos naquele instante. Matematicamente defensável e péssimo na prática —
+ * com uma conta em 6 e outra em 0, um lote de 4 caía INTEIRO na conta vazia, e
+ * quem mandou o lote via "distribuir entre contas" não distribuir nada.
  *
  * Função pura: recebe as cargas prontas, para poder ser testada sem banco.
  *
@@ -31,21 +36,14 @@ import { VIDEO_STATUS } from '../../lib/enums.js';
 export function repartir(itens, contas) {
   if (!contas?.length) throw new Error('Nenhuma conta para distribuir.');
 
-  // Cópia local: a função não pode alterar o que recebeu.
-  const carga = contas.map((c) => ({ id: c.id, n: c.carga ?? 0 }));
-  const saida = [];
+  // Cópia antes de ordenar: `sort` altera o array no lugar, e a função não
+  // pode mexer no que recebeu. Empate mantém a ordem recebida, o que faz o
+  // mesmo lote distribuir igual em duas execuções.
+  const ordem = [...contas]
+    .map((c, i) => ({ id: c.id, carga: c.carga ?? 0, posicao: i }))
+    .sort((a, b) => (a.carga - b.carga) || (a.posicao - b.posicao));
 
-  for (const item of itens) {
-    // Empate resolvido pela ordem recebida, o que mantém o resultado
-    // previsível — o mesmo lote distribui igual em duas execuções.
-    let alvo = carga[0];
-    for (const c of carga) if (c.n < alvo.n) alvo = c;
-
-    saida.push({ item, accountId: alvo.id });
-    alvo.n += 1;
-  }
-
-  return saida;
+  return itens.map((item, i) => ({ item, accountId: ordem[i % ordem.length].id }));
 }
 
 /**

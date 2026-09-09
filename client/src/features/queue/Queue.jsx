@@ -393,8 +393,8 @@ export default function Queue() {
         {distribuir && (
           <>
             <p className="faint mt">
-              Quem participa. Cada arquivo vai para a conta com a menor fila no momento, então as
-              filas terminam do mesmo tamanho.
+              Quem participa. O lote é dividido por igual entre as marcadas — 40 vídeos em 4 contas
+              viram 10 para cada. O rodízio começa pela conta com a fila menor.
             </p>
             <div className="dist__contas">
               {accounts.map((a) => {

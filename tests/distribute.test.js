@@ -24,13 +24,29 @@ describe('repartir', () => {
     }
   });
 
-  test('filas desiguais: equaliza em vez de rodízio cego', () => {
-    // c1 já tem 5; c2 e c3 estão vazias. Rodízio puro daria 2/2/2 e manteria
-    // c1 na frente para sempre.
+  test('divide o LOTE, mesmo com filas desiguais', () => {
+    // c1 já tem 5; c2 e c3 estão vazias. O lote continua sendo repartido entre
+    // as três — jogar tudo nas vazias seria "distribuir" sem distribuir, que
+    // foi exatamente a reclamação que originou esta regra.
     const plano = repartir([1, 2, 3, 4, 5, 6], contas(5, 0, 0));
-    assert.equal(conta(plano, 'c1'), 0);
-    assert.equal(conta(plano, 'c2'), 3);
-    assert.equal(conta(plano, 'c3'), 3);
+    assert.equal(conta(plano, 'c1'), 2);
+    assert.equal(conta(plano, 'c2'), 2);
+    assert.equal(conta(plano, 'c3'), 2);
+  });
+
+  test('a conta com a fila menor recebe primeiro', () => {
+    // Lote de 2 em 3 contas: as duas mais vazias levam.
+    const plano = repartir(['a', 'b'], contas(9, 0, 3));
+    assert.equal(conta(plano, 'c2'), 1, 'a mais vazia');
+    assert.equal(conta(plano, 'c3'), 1, 'a segunda mais vazia');
+    assert.equal(conta(plano, 'c1'), 0, 'a mais cheia fica de fora deste lote');
+  });
+
+  test('sobra vai para as primeiras da ordem', () => {
+    // 5 itens em 2 contas: 3 e 2, não 5 e 0.
+    const plano = repartir([1, 2, 3, 4, 5], contas(0, 0));
+    assert.equal(conta(plano, 'c1'), 3);
+    assert.equal(conta(plano, 'c2'), 2);
   });
 
   test('não altera as cargas recebidas', () => {

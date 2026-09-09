@@ -142,7 +142,10 @@ async function link(account, video, at) {
   await prisma.video.update({ where: { id: video.id }, data: { status: VIDEO_STATUS.SCHEDULED } });
 }
 
-/** Modo "a cada N minutos": distribui a fila inteira a partir de agora. */
+/**
+ * Modo "a cada N minutos": espalha a fila inteira, um vídeo por intervalo,
+ * contando a partir da última publicação da conta.
+ */
 async function byInterval(account) {
   const videos = await prisma.video.findMany({
     where: { accountId: account.id, status: VIDEO_STATUS.PENDING, mediaType: MEDIA.REEL },
@@ -152,12 +155,33 @@ async function byInterval(account) {
 
   const step = Math.max(1, account.intervalMinutes || 60) * 60_000;
 
+  // O intervalo conta a partir da ÚLTIMA publicação, não de agora.
+  //
+  // Este era o bug do "posta tudo em sequência": a grade é refeita a cada
+  // upload, exclusão, reordenação ou ajuste da conta, e começando em
+  // `Date.now()` o primeiro vídeo da fila nascia VENCIDO — publicava no tick
+  // seguinte, o que disparava outra regeração, que vencia o próximo, e assim
+  // por diante. O intervalo de 10 minutos existia na configuração e nunca no
+  // resultado.
+  //
+  // Se a última publicação foi há mais tempo que o intervalo, começa agora:
+  // agendar no passado publicaria tudo de uma vez, que é o mesmo problema.
+  const ultima = await prisma.publication.findFirst({
+    where: { accountId: account.id, status: VIDEO_STATUS.PUBLISHED, publishedAt: { not: null } },
+    orderBy: { publishedAt: 'desc' },
+    select: { publishedAt: true },
+  });
+
+  const inicio = Math.max(
+    ultima?.publishedAt ? ultima.publishedAt.getTime() + step : 0,
+    Date.now(),
+  );
+
   // Gera os instantes primeiro e só então aplica os limites: um horário
   // recusado pelo silêncio ou pelo teto não pode consumir um vídeo da fila.
   // Sobram mais instantes que vídeos de propósito — os cortes precisam de
   // folga para o último vídeo ainda achar lugar.
   const brutos = [];
-  const inicio = Date.now();
   for (let i = 0; i < videos.length * 4; i++) brutos.push(new Date(inicio + i * step));
 
   const { mantidos, silencio, teto } = aplicarLimites(

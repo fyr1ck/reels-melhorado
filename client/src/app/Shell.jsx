@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
   Copy,
   Users, Activity, HardDrive, Bot, MessageCircle, Settings as SettingsIcon, Wand2,
-  PanelLeftClose, PanelLeft, Film, Check, AlertTriangle,
+  PanelLeftClose, PanelLeft, Film, Check, AlertTriangle, Play,
 } from 'lucide-react';
 import { useAccount } from '../hooks/useAccount.jsx';
 import './shell.css';
@@ -67,6 +67,9 @@ const TITLES = Object.fromEntries(
 export default function Shell({ children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('rm.nav') === '1');
   const { accounts, accountId, account, select } = useAccount();
+
+  // Ativa = ligada E com o agendador rodando. É o que decide se algo sai.
+  const ativas = accounts.filter((a) => a.enabled && a.status === 'ACTIVE');
   const location = useLocation();
 
   useEffect(() => {
@@ -134,6 +137,23 @@ export default function Shell({ children }) {
         <header className="top">
           <h1>{TITLES[location.pathname] ?? 'Reels Manager'}</h1>
           <div className="top__spacer" />
+          {/* Quantas contas estão publicando AGORA.
+              A barra só mostrava a conta do seletor, e com várias contas não
+              havia como saber quantas estavam ativas sem abrir a tela de
+              Contas — justamente a informação que importa quando a automação
+              está rodando. O título diz quais são. */}
+          {accounts.length > 1 && (
+            <span
+              className={`top__ativas${ativas.length ? ' is-on' : ''}`}
+              title={ativas.length
+                ? `Publicando: ${ativas.map((a) => `@${a.username}`).join(', ')}`
+                : 'Nenhuma conta publicando. Ative em Contas.'}
+            >
+              <Play size={12} />
+              {ativas.length} de {accounts.length} publicando
+            </span>
+          )}
+
           {account && (
             <span className={`top__conn top__conn--${account.connected ? 'ok' : 'off'}`}>
               {account.connected ? <Check size={13} /> : <AlertTriangle size={13} />}
