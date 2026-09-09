@@ -203,6 +203,64 @@ async function ensureFocused(page, captionBox) {
 }
 
 /**
+ * Como `clickFirstMatch`, mas SÓ dentro da janela de criação.
+ *
+ * `text=Avançar` e `text=Postar` valem para a página inteira, e o feed fica
+ * visível atrás do modal. Um clique que caia lá fora não avança nada: fecha a
+ * janela. O sintoma era a publicação parar entre o upload e a legenda, com o
+ * feed na tela e "Compartilhar não encontrado" no fim — sem nada indicando que
+ * o clique tinha errado o alvo.
+ *
+ * Quando a janela não é encontrada, cai no clique global: é melhor tentar do
+ * que travar caso o Instagram mude a marcação do modal.
+ */
+async function clickNaJanela(page, selectors, options = {}) {
+  const janelas = page.locator(SELECTORS.createDialog.join(', '));
+  const total = await janelas.count().catch(() => 0);
+
+  // De trás para frente: quando há mais de um modal aberto (o de confirmar
+  // descarte, por exemplo), o de cima é o último do DOM — e é nele que o
+  // clique precisa cair.
+  for (let i = total - 1; i >= 0; i--) {
+    const janela = janelas.nth(i);
+    if (!await janela.isVisible().catch(() => false)) continue;
+
+    for (const sel of selectors) {
+      try {
+        const alvo = janela.locator(sel).first();
+        if ((await alvo.count()) > 0 && await alvo.isVisible()) {
+          await alvo.click(options);
+          return true;
+        }
+      } catch { /* seletor inválido para esta versão da página */ }
+    }
+  }
+
+  // Nenhum modal na tela: tenta o clique global. É melhor tentar do que travar
+  // caso o Instagram mude a marcação da janela.
+  if (total === 0) return clickFirstMatch(page, selectors, options);
+
+  return false;
+}
+
+/**
+ * Quantos modais estão visíveis agora.
+ *
+ * Conta só o que está VISÍVEL: o Instagram deixa `div[role="dialog"]` vazios e
+ * escondidos no DOM, e contá-los faria a janela parecer aberta para sempre.
+ */
+async function janelasAbertas(page) {
+  const janelas = page.locator(SELECTORS.createDialog.join(', '));
+  const total = await janelas.count().catch(() => 0);
+
+  let visiveis = 0;
+  for (let i = 0; i < total; i++) {
+    if (await janelas.nth(i).isVisible().catch(() => false)) visiveis++;
+  }
+  return visiveis;
+}
+
+/**
  * Link do post mais recente do perfil.
  *
  * É a única prova de verdade de que um reel foi ao ar. Tudo o que acontece
@@ -279,7 +337,7 @@ async function confirmarPublicacao(page, videoName, timeoutMs) {
     }
 
     // A janela de criação fechou: o Instagram aceitou o reel.
-    const aberta = await page.locator(SELECTORS.createDialog.join(', ')).count().catch(() => 1);
+    const aberta = await janelasAbertas(page);
     if (aberta === 0) {
       await logEvent({
         video: videoName, action: 'CONFIRMADO_POR_JANELA', status: 'INFO',
@@ -515,7 +573,7 @@ export async function publishReel({
     // Em algumas versões da UI, depois de clicar em "Criar" abre um menu com
     // "Postar" / "Vídeo ao vivo" / "Anúncio" — precisa escolher "Postar"
     // para chegar na tela de upload. Em outras versões, já abre direto.
-    await clickFirstMatch(page, SELECTORS.postOption).catch(() => {});
+    await clickNaJanela(page, SELECTORS.postOption).catch(() => {});
     await page.waitForTimeout(800);
 
     // Confirma que realmente chegamos na tela de upload antes de seguir —
@@ -545,7 +603,20 @@ export async function publishReel({
         coverAttempted = await selectCustomCover(page, videoName, coverPath);
       }
 
-      const advanced = await clickFirstMatch(page, SELECTORS.nextButton);
+      const advanced = await clickNaJanela(page, SELECTORS.nextButton);
+
+      // Registra cada volta: sem isto, "parou entre o upload e a legenda" não
+      // diz em qual etapa parou nem se a janela ainda estava lá — e foi
+      // exatamente essa cegueira que fez a causa ser confundida com limite de
+      // publicação do Instagram.
+      await logEvent({
+        video: videoName,
+        action: 'AVANCANDO',
+        status: 'INFO',
+        message: `passo ${i + 1}: ${advanced ? 'avançou' : 'sem "Avançar" na tela'}`
+          + `, janelas visíveis: ${await janelasAbertas(page)}`,
+      });
+
       if (!advanced) break;
     }
 
@@ -560,8 +631,7 @@ export async function publishReel({
     //
     // Distinguir isso importa porque a reação certa é OPOSTA à de uma falha
     // comum: repetir piora, e o agendador tentaria três vezes por vídeo.
-    const janelaAberta = await page.locator(SELECTORS.createDialog.join(', '))
-      .count().catch(() => 1);
+    const janelaAberta = await janelasAbertas(page);
 
     if (janelaAberta === 0) {
       const telaAtual = await page.evaluate(
@@ -595,7 +665,7 @@ export async function publishReel({
       await toggleAiLabel(page, videoName);
     }
 
-    const shared = await clickFirstMatch(page, SELECTORS.shareButton);
+    const shared = await clickNaJanela(page, SELECTORS.shareButton);
     if (!shared) {
       throw new Error('Botão "Compartilhar" não encontrado. Verifique server/playwright/selectors.js.');
     }

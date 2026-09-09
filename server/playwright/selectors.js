@@ -128,13 +128,35 @@ export const SELECTORS = {
     'text="Share"',
   ],
 
-  // Caixa de texto da legenda
+  // Caixa de texto da legenda.
+  //
+  // O Instagram trocou o texto de "Escreva uma legenda…" para "Adicione uma
+  // legenda..." — inclusive as reticências, que agora são três pontos e não o
+  // caractere "…". Por isso as variantes com `*=` (contém), que sobrevivem à
+  // próxima troca de pontuação.
   captionTextbox: [
+    'div[aria-label*="Adicione uma legenda"]',
+    'div[aria-label*="Escreva uma legenda"]',
+    'div[aria-label*="Add a caption"]',
+    'div[aria-label*="Write a caption"]',
+    'textarea[aria-label*="Adicione uma legenda"]',
+    'textarea[aria-label*="Escreva uma legenda"]',
     'div[aria-label="Escreva uma legenda…"]',
     'div[aria-label="Write a caption…"]',
     'textarea[aria-label="Escreva uma legenda…"]',
     'textarea[aria-label="Write a caption…"]',
   ],
+
+  // A janela de criação do post. Fica aberta do upload até o compartilhamento,
+  // e fechar é o sinal — independente de idioma — de que o reel foi aceito.
+  //
+  // NÃO prender este seletor ao texto do cabeçalho. O cabeçalho troca a cada
+  // etapa ("Criar novo post" -> "Cortar" -> "Editar" -> "Novo reel"), então um
+  // seletor preso ao texto casa no começo e para de casar no meio do fluxo.
+  // Quando isso acontecia, o clique escopado não achava "Avançar" E o
+  // publisher concluía que o Instagram tinha fechado a janela — nenhuma das
+  // duas coisas era verdade: a janela ficou aberta o tempo todo.
+  createDialog: ['div[role="dialog"]'],
 
   // Indicadores observáveis de que a publicação foi concluída com sucesso.
   // A automação só considera "publicado" quando um destes aparece.
@@ -142,17 +164,6 @@ export const SELECTORS = {
   // IMPORTANTE: os textos abaixo precisam ser EXATAMENTE o trecho contínuo
   // que aparece na tela (a busca é por substring). O Instagram mostra o
   // diálogo "Reels compartilhados" com o texto "Seu reel foi compartilhado."
-  // A janela de criação do post. Fica aberta do upload até o compartilhamento,
-  // e fechar é o sinal — independente de idioma — de que o reel foi aceito.
-  createDialog: [
-    'div[role="dialog"] [aria-label="Novo reel"]',
-    'div[role="dialog"] [aria-label="New reel"]',
-    'div[role="dialog"]:has-text("Novo reel")',
-    'div[role="dialog"]:has-text("New reel")',
-    'div[role="dialog"]:has-text("Criar novo post")',
-    'div[role="dialog"]:has-text("Create new post")',
-  ],
-
   successIndicators: {
     textPatterns: [
       'Reels compartilhados',
