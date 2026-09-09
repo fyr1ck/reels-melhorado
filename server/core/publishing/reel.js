@@ -244,6 +244,52 @@ async function clickNaJanela(page, selectors, options = {}) {
 }
 
 /**
+ * Espera o botão APARECER e clica.
+ *
+ * Olhar uma vez e desistir não serve aqui: logo depois de escolher o arquivo o
+ * vídeo ainda está subindo, e o "Avançar" só existe quando o Instagram termina
+ * de processar. O sintoma de olhar cedo demais era a publicação parar no passo
+ * 1 com a janela aberta e nenhum botão dentro dela.
+ *
+ * `parar` é a condição de fim de fila — quando ela é verdadeira, não há mais o
+ * que avançar e esperar o prazo inteiro seria só travar.
+ */
+async function esperarEClicar(page, selectors, timeoutMs, parar) {
+  const limite = Date.now() + timeoutMs;
+
+  while (Date.now() < limite) {
+    if (await clickNaJanela(page, selectors)) return true;
+    if (parar && await parar()) return false;
+    await page.waitForTimeout(1000);
+  }
+  return false;
+}
+
+/**
+ * Já chegamos na tela da legenda?
+ *
+ * A busca é DENTRO do modal de propósito. O feed atrás dele tem um
+ * "Compartilhar" em cada publicação, e procurar na página inteira daria tela da
+ * legenda encontrada antes mesmo de o vídeo subir.
+ */
+async function naTelaDaLegenda(page) {
+  const janelas = page.locator(SELECTORS.createDialog.join(', '));
+  const total = await janelas.count().catch(() => 0);
+
+  for (let i = total - 1; i >= 0; i--) {
+    const janela = janelas.nth(i);
+    if (!await janela.isVisible().catch(() => false)) continue;
+
+    for (const sel of [...SELECTORS.captionTextbox, ...SELECTORS.shareButton]) {
+      try {
+        if (await janela.locator(sel).first().isVisible()) return true;
+      } catch { /* seletor inválido para esta versão da página */ }
+    }
+  }
+  return false;
+}
+
+/**
  * Quantos modais estão visíveis agora.
  *
  * Conta só o que está VISÍVEL: o Instagram deixa `div[role="dialog"]` vazios e
@@ -288,27 +334,49 @@ async function primeiroPostDoPerfil(page, username) {
 }
 
 /**
- * Confirma no PERFIL que o reel foi ao ar.
+ * Confere no perfil que o reel foi mesmo ao ar.
  *
- * Compara com o link capturado antes de publicar. O Instagram leva alguns
- * segundos para processar o vídeo, por isso a espera em laço.
+ * Olha a IDADE do post mais recente em vez de comparar com um link capturado
+ * antes de publicar. Isso muda duas coisas que importavam:
+ *
+ * - não custa uma navegação ao perfil antes do upload, no caminho crítico;
+ * - não exige uma segunda aba aberta durante a publicação inteira.
+ *
+ * A aba é aberta aqui e fechada antes de retornar — nunca sobra uma segunda
+ * janela no Chrome.
  */
-async function confirmarNoPerfil(page, username, antes, videoName, timeoutMs = 120_000) {
+async function conferirNoPerfil(context, username, videoName, timeoutMs = 120_000) {
+  const aba = await context.newPage();
   const limite = Date.now() + timeoutMs;
 
-  while (Date.now() < limite) {
-    const agora = await primeiroPostDoPerfil(page, username);
+  try {
+    while (Date.now() < limite) {
+      const link = await primeiroPostDoPerfil(aba, username);
 
-    if (agora && agora !== antes) {
-      await logEvent({
-        video: videoName, action: 'CONFIRMADO_NO_PERFIL', status: 'INFO',
-        message: `O post mais recente de @${username} mudou para ${agora}.`,
-      });
-      return true;
+      if (link) {
+        await aba.goto(new URL(link, 'https://www.instagram.com').href, {
+          waitUntil: 'domcontentloaded', timeout: 60_000,
+        }).catch(() => {});
+
+        const quando = await aba.locator('time[datetime]').first()
+          .getAttribute('datetime').catch(() => null);
+        const idadeMin = quando ? (Date.now() - Date.parse(quando)) / 60_000 : null;
+
+        if (idadeMin !== null && idadeMin >= 0 && idadeMin <= 15) {
+          await logEvent({
+            video: videoName, action: 'CONFIRMADO_NO_PERFIL', status: 'INFO',
+            message: `O post mais recente de @${username} tem ${idadeMin.toFixed(1)} min: é este.`,
+          });
+          return true;
+        }
+      }
+
+      await aba.waitForTimeout(10_000);
     }
-    await page.waitForTimeout(6000);
+    return false;
+  } finally {
+    await aba.close().catch(() => {});
   }
-  return false;
 }
 
 /**
@@ -332,7 +400,7 @@ async function confirmarPublicacao(page, videoName, timeoutMs) {
       const achou = await page.locator(`text=${t}`).count().catch(() => 0);
       if (achou > 0) {
         await logEvent({ video: videoName, action: 'CONFIRMADO_POR_TEXTO', status: 'INFO', message: t });
-        return true;
+        return 'TEXTO';
       }
     }
 
@@ -343,13 +411,13 @@ async function confirmarPublicacao(page, videoName, timeoutMs) {
         video: videoName, action: 'CONFIRMADO_POR_JANELA', status: 'INFO',
         message: 'A janela de criação fechou — o Instagram aceitou o reel.',
       });
-      return true;
+      return 'JANELA';
     }
 
     await page.waitForTimeout(1000);
   }
 
-  return false;
+  return null;
 }
 
 /**
@@ -517,15 +585,11 @@ export async function publishReel({
   const context = await contextFor(accountId);
   const page = await context.newPage();
 
-  // A verificação do perfil roda numa ABA SEPARADA.
+  // A publicação usa UMA aba só.
   //
-  // Eu tinha feito a página da publicação passar pelo perfil antes de começar,
-  // e isso quebrou um fluxo que funcionava: o upload seguia, mas a tela da
-  // legenda nunca aparecia. Navegação a mais no caminho crítico é risco puro —
-  // a conferência não vale atrapalhar o que ela deveria só observar.
-  const abaPerfil = username ? await context.newPage() : null;
-  const postAntes = abaPerfil ? await primeiroPostDoPerfil(abaPerfil, username) : null;
-
+  // A conferência no perfil já morou aqui, numa segunda aba aberta do começo ao
+  // fim — e o resultado era o Chrome com duas abas durante a publicação
+  // inteira. Hoje ela só abre se fizer falta, no fim, e fecha em seguida.
   try {
     await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded' });
     await handleCheckpointIfNeeded(page, videoName);
@@ -596,14 +660,16 @@ export async function publishReel({
     // que a tela com "Foto da capa" aparecer (não necessariamente a
     // primeira), antes de seguir clicando em "Avançar".
     let coverAttempted = !coverPath;
-    for (let i = 0; i < 4; i++) {
-      await page.waitForTimeout(1500);
+    for (let passo = 1; passo <= 4; passo++) {
+      if (await naTelaDaLegenda(page)) break;
 
       if (!coverAttempted) {
         coverAttempted = await selectCustomCover(page, videoName, coverPath);
       }
 
-      const advanced = await clickNaJanela(page, SELECTORS.nextButton);
+      const advanced = await esperarEClicar(
+        page, SELECTORS.nextButton, 120_000, () => naTelaDaLegenda(page),
+      );
 
       // Registra cada volta: sem isto, "parou entre o upload e a legenda" não
       // diz em qual etapa parou nem se a janela ainda estava lá — e foi
@@ -613,7 +679,7 @@ export async function publishReel({
         video: videoName,
         action: 'AVANCANDO',
         status: 'INFO',
-        message: `passo ${i + 1}: ${advanced ? 'avançou' : 'sem "Avançar" na tela'}`
+        message: `passo ${passo}: ${advanced ? 'avançou' : 'fim das telas de edição'}`
           + `, janelas visíveis: ${await janelasAbertas(page)}`,
       });
 
@@ -672,58 +738,49 @@ export async function publishReel({
 
     await logEvent({ video: videoName, action: 'AGUARDANDO_CONFIRMACAO', status: 'INFO', message: 'Aguardando confirmação observável de sucesso.' });
 
-    // Primeiro o sinal rápido: a janela fechar ou o texto de sucesso aparecer
-    // indica que o Instagram ACEITOU o envio. Não prova que publicou.
-    const aceitou = await confirmarPublicacao(page, videoName, 90_000);
+    // Duas confirmações diferentes, e a diferença decide se vale abrir o perfil.
+    const comoConfirmou = await confirmarPublicacao(page, videoName, 90_000);
 
-    // A prova é o perfil. Sem username não há como verificar, e nesse caso o
-    // sinal fraco vale — mas fica registrado que a confirmação foi fraca.
-    if (abaPerfil) {
-      const noAr = aceitou
-        ? await confirmarNoPerfil(abaPerfil, username, postAntes, videoName)
-        : false;
-
-      if (!noAr) {
-        const naTela = await page.evaluate(
-          () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
-        ).catch(() => '(não foi possível ler)');
-
-        throw new Error(
-          aceitou
-            ? `O Instagram aceitou o envio mas o reel não apareceu no perfil de @${username} em 2 minutos. `
-              + 'Ele pode estar em processamento — confira o perfil antes de tentar de novo.'
-            : `Não consegui confirmar a publicação. A tela mostrava: "${naTela}"`,
-        );
-      }
-
+    // "Seu post foi compartilhado" é o próprio Instagram dizendo que publicou.
+    // Não há o que conferir depois disso, e conferir custaria uma segunda aba.
+    if (comoConfirmou === 'TEXTO') {
       return { ok: true, durationMs: Date.now() - start };
     }
 
-    await logEvent({
-      video: videoName, action: 'CONFIRMACAO_FRACA', status: 'WARNING',
-      message: 'Sem o @ da conta, não deu para conferir no perfil. Confirmado só pelo fechamento da janela.',
-    });
-
-    const confirmed = aceitou;
-
-    if (!confirmed) {
-      // Diz o que ESTAVA na tela quando desistiu. Sem isso, "não confirmei"
-      // não distingue "falhou" de "deu certo e eu não soube reconhecer" — e a
-      // segunda hipótese leva a republicar um reel que já está no ar.
-      const naTela = await page.evaluate(
-        () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
-      ).catch(() => '(não foi possível ler)');
+    // Só a janela ter fechado não prova nada: ela também fecha quando o envio é
+    // recusado. Foi assim que o painel marcou como publicado um reel que não
+    // estava no perfil. Aqui — e só aqui — vale a ida ao perfil.
+    if (comoConfirmou === 'JANELA' && username) {
+      if (await conferirNoPerfil(context, username, videoName)) {
+        return { ok: true, durationMs: Date.now() - start };
+      }
 
       throw new Error(
-        'Não consegui confirmar a publicação em 90s. O reel PODE ter ido ao ar — confira o perfil '
-        + `antes de tentar de novo. A tela mostrava: "${naTela}"`,
+        `O Instagram aceitou o envio mas o reel não apareceu no perfil de @${username} em 2 minutos. `
+        + 'Ele pode estar em processamento — confira o perfil antes de tentar de novo.',
       );
     }
 
-    return { ok: true, durationMs: Date.now() - start };
-  } finally {
-    await abaPerfil?.close().catch(() => {});
+    if (comoConfirmou === 'JANELA') {
+      await logEvent({
+        video: videoName, action: 'CONFIRMACAO_FRACA', status: 'WARNING',
+        message: 'Sem o @ da conta, não deu para conferir no perfil. Confirmado só pelo fechamento da janela.',
+      });
+      return { ok: true, durationMs: Date.now() - start };
+    }
 
+    // Diz o que ESTAVA na tela quando desistiu. Sem isso, "não confirmei" não
+    // distingue "falhou" de "deu certo e eu não soube reconhecer" — e a segunda
+    // hipótese leva a republicar um reel que já está no ar.
+    const naTela = await page.evaluate(
+      () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    ).catch(() => '(não foi possível ler)');
+
+    throw new Error(
+      'Não consegui confirmar a publicação em 90s. O reel PODE ter ido ao ar — confira o perfil '
+      + `antes de tentar de novo. A tela mostrava: "${naTela}"`,
+    );
+  } finally {
     // Fecha a aba, não o contexto: a sessão segue viva para a próxima
     // publicação da mesma conta. Quem encerra o navegador é o ciclo de
     // parar/pausar a automação.

@@ -166,6 +166,9 @@ export const SELECTORS = {
   // diálogo "Reels compartilhados" com o texto "Seu reel foi compartilhado."
   successIndicators: {
     textPatterns: [
+      'Seu post foi compartilhado',
+      'Post compartilhado',
+      'Your post has been shared',
       'Reels compartilhados',
       'Seu reel foi compartilhado',
       'Sua publicação foi compartilhada',
