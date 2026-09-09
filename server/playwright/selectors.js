@@ -137,6 +137,17 @@ export const SELECTORS = {
   // IMPORTANTE: os textos abaixo precisam ser EXATAMENTE o trecho contínuo
   // que aparece na tela (a busca é por substring). O Instagram mostra o
   // diálogo "Reels compartilhados" com o texto "Seu reel foi compartilhado."
+  // A janela de criação do post. Fica aberta do upload até o compartilhamento,
+  // e fechar é o sinal — independente de idioma — de que o reel foi aceito.
+  createDialog: [
+    'div[role="dialog"] [aria-label="Novo reel"]',
+    'div[role="dialog"] [aria-label="New reel"]',
+    'div[role="dialog"]:has-text("Novo reel")',
+    'div[role="dialog"]:has-text("New reel")',
+    'div[role="dialog"]:has-text("Criar novo post")',
+    'div[role="dialog"]:has-text("Create new post")',
+  ],
+
   successIndicators: {
     textPatterns: [
       'Reels compartilhados',

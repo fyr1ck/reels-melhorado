@@ -60,13 +60,47 @@ export async function padraoDaConta(accountId, settings) {
 /**
  * Capa que o vídeo vai usar de fato, na ordem: a própria > a da conta > a
  * geral. Devolve caminho absoluto — é o que o publicador precisa — ou null.
+ *
+ * Cada candidata é conferida NO DISCO antes de ser escolhida, e a lista segue
+ * quando uma falta. A versão anterior pegava a primeira e desistia se o arquivo
+ * não estivesse lá: um vídeo com capa própria cujo arquivo tinha sido apagado
+ * publicava SEM capa nenhuma — mesmo com a conta tendo uma padrão perfeitamente
+ * válida. O sintoma era "troquei a capa e não foi", sem nada no log.
  */
 export async function resolveFor(video) {
-  const nome = video.coverPath || (await padraoDaConta(video.accountId));
-  if (!nome) return null;
+  const candidatas = [video.coverPath, await padraoDaConta(video.accountId)].filter(Boolean);
 
-  const full = path.join(config.paths.covers, nome);
-  return fs.existsSync(full) ? full : null;
+  for (const nome of candidatas) {
+    const full = path.join(config.paths.covers, nome);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+/**
+ * Solta os vídeos que apontam para uma capa que não existe mais.
+ *
+ * Sem isto o painel mente: a etiqueta diz "capa própria" num vídeo cuja imagem
+ * sumiu, e o usuário não tem como saber que ele vai herdar a da conta.
+ * Idempotente — roda no boot e não faz nada quando está tudo certo.
+ */
+export async function repararCapasQuebradas() {
+  const comCapa = await prisma.video.findMany({
+    where: { coverPath: { not: null }, status: { in: ['PENDING', 'SCHEDULED'] } },
+    select: { id: true, coverPath: true },
+  });
+
+  const quebrados = comCapa
+    .filter((v) => !fs.existsSync(path.join(config.paths.covers, v.coverPath)))
+    .map((v) => v.id);
+
+  if (!quebrados.length) return { soltos: 0 };
+
+  await prisma.video.updateMany({
+    where: { id: { in: quebrados } },
+    data: { coverPath: null },
+  });
+  return { soltos: quebrados.length };
 }
 
 /**

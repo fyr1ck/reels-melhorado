@@ -3,6 +3,7 @@ import { config } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import { ensureDirs } from './lib/files.js';
 import * as duplicates from './core/queue/duplicates.js';
+import * as covers from './core/queue/covers.js';
 import * as assistant from './core/assistant/index.js';
 import * as whatsapp from './core/whatsapp/index.js';
 import * as accounts from './core/accounts/accounts.js';
@@ -71,6 +72,14 @@ async function recover() {
   }
 
   await repararHistorico();
+
+  // Vídeos apontando para uma capa que sumiu do disco voltam a herdar a da
+  // conta. Sem isto eles publicariam sem capa, e o painel ainda diria que
+  // tinham uma.
+  const capas = await covers.repararCapasQuebradas();
+  if (capas.soltos) {
+    console.log(`↻ ${capas.soltos} vídeo(s) tinham capa inexistente e voltaram a herdar a da conta.`);
+  }
 
   // Mesma situação nos lotes do editor: o progresso vive em memória, então um
   // lote marcado RUNNING depois de um reinício é órfão — não há trabalhador

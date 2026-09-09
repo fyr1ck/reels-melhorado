@@ -3,7 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { wrap } from '../middleware/errors.js';
 import * as accounts from '../../core/accounts/accounts.js';
 import * as auth from '../../core/accounts/auth.js';
-import { regenerate } from '../../core/scheduling/scheduler.js';
+import { regenerate, comNavegador } from '../../core/scheduling/scheduler.js';
 import { closeContext } from '../../playwright/browser.js';
 import * as logger from '../../core/log.js';
 import { ACCOUNT_STATUSES, SCHEDULE_MODES, VIDEO_STATUS } from '../../lib/enums.js';
@@ -235,7 +235,9 @@ router.post('/:id/recycle', wrap(async (req, res) => {
 router.get('/:id/diagnostico', wrap(async (req, res) => {
   const account = await accounts.requireAccount(req.params.id);
   accounts.assertConnected(account);
-  res.json(await publishDiag.inspecionar(account.id));
+  // Na mesma fila do agendador: diagnosticar enquanto ele publica fecha a
+  // página de um dos dois no meio da operação.
+  res.json(await comNavegador(() => publishDiag.inspecionar(account.id)));
 }));
 
 /** Define a conta usada pelas telas quando nenhuma está selecionada. */

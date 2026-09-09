@@ -17,6 +17,26 @@ import * as notify from '../notify.js';
 let timer = null;
 let busy = false;
 
+/**
+ * Fila das operações que dirigem o navegador.
+ *
+ * O agendador se serializava sozinho com `busy`, mas "Publicar agora" e o
+ * diagnóstico do Instagram entravam por fora e abriam página no mesmo
+ * contexto. Duas navegações na mesma aba fazem uma abortar a outra, e o erro
+ * que aparece — "Target page, context or browser has been closed" — não diz
+ * nada sobre a causa.
+ *
+ * Tudo que mexe no navegador passa por aqui.
+ */
+let filaNavegador = Promise.resolve();
+
+export function comNavegador(fn) {
+  const proxima = filaNavegador.then(fn, fn);
+  // A corrente não pode morrer numa rejeição: o erro vai para quem chamou.
+  filaNavegador = proxima.catch(() => {});
+  return proxima;
+}
+
 export function start() {
   if (timer) return;
   timer = setInterval(() => tick().catch(() => {}), config.schedulerTickMs);
@@ -362,6 +382,7 @@ async function tick() {
 
   busy = true;
   try {
+    await comNavegador(async () => {
     // Uma janela por vez: fecha a das OUTRAS contas antes de começar.
     //
     // Fechar depois de cada publicação (o que eu tentei antes) obrigava a
@@ -369,9 +390,10 @@ async function tick() {
     // terminava de montar a tempo — o botão de criar publicação passou a não
     // ser encontrado. Assim a janela da conta que está publicando continua
     // quente entre publicações seguidas dela.
-    await keepOnly(due.accountId).catch(() => {});
+      await keepOnly(due.accountId).catch(() => {});
 
-    await run(due);
+      await run(due);
+    });
   } catch (err) {
     await logger.error({ action: 'ERRO_AGENDADOR', message: err.message });
   } finally {

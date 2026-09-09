@@ -202,6 +202,47 @@ async function ensureFocused(page, captionBox) {
 }
 
 /**
+ * Confirma que a publicação saiu.
+ *
+ * Duas provas independentes, porque nenhuma sozinha é confiável:
+ *
+ * 1. O texto de sucesso ("Reels compartilhados" e variantes). Depende do
+ *    idioma e da redação do Instagram, que muda sem aviso.
+ * 2. A JANELA DE CRIAÇÃO SUMIR. Ela fica aberta durante todo o processo e só
+ *    fecha quando o reel é aceito — é estrutural e não depende de idioma.
+ *
+ * A segunda existe porque a primeira já falhou: uma publicação que foi ao ar
+ * voltou como "não confirmada", o vídeo permaneceu na fila e seria republicado.
+ */
+async function confirmarPublicacao(page, videoName, timeoutMs) {
+  const limite = Date.now() + timeoutMs;
+
+  while (Date.now() < limite) {
+    for (const t of SELECTORS.successIndicators.textPatterns) {
+      const achou = await page.locator(`text=${t}`).count().catch(() => 0);
+      if (achou > 0) {
+        await logEvent({ video: videoName, action: 'CONFIRMADO_POR_TEXTO', status: 'INFO', message: t });
+        return true;
+      }
+    }
+
+    // A janela de criação fechou: o Instagram aceitou o reel.
+    const aberta = await page.locator(SELECTORS.createDialog.join(', ')).count().catch(() => 1);
+    if (aberta === 0) {
+      await logEvent({
+        video: videoName, action: 'CONFIRMADO_POR_JANELA', status: 'INFO',
+        message: 'A janela de criação fechou — o Instagram aceitou o reel.',
+      });
+      return true;
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  return false;
+}
+
+/**
  * Liga o "Adicionar rótulo de IA" na tela da legenda.
  *
  * O Instagram exige esse rótulo em foto e vídeo realistas gerados por IA. O
@@ -464,10 +505,20 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
 
     await logEvent({ video: videoName, action: 'AGUARDANDO_CONFIRMACAO', status: 'INFO', message: 'Aguardando confirmação observável de sucesso.' });
 
-    const confirmed = await waitForAnyText(page, SELECTORS.successIndicators.textPatterns, 90000);
+    const confirmed = await confirmarPublicacao(page, videoName, 90_000);
 
     if (!confirmed) {
-      throw new Error('Não foi possível confirmar a publicação: nenhum indicador de sucesso apareceu em 90s.');
+      // Diz o que ESTAVA na tela quando desistiu. Sem isso, "não confirmei"
+      // não distingue "falhou" de "deu certo e eu não soube reconhecer" — e a
+      // segunda hipótese leva a republicar um reel que já está no ar.
+      const naTela = await page.evaluate(
+        () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      ).catch(() => '(não foi possível ler)');
+
+      throw new Error(
+        'Não consegui confirmar a publicação em 90s. O reel PODE ter ido ao ar — confira o perfil '
+        + `antes de tentar de novo. A tela mostrava: "${naTela}"`,
+      );
     }
 
     return { ok: true, durationMs: Date.now() - start };

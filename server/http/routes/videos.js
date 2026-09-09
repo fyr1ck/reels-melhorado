@@ -8,7 +8,7 @@ import { wrap } from '../middleware/errors.js';
 import { uniqueName, ensureDirs, sizeOf } from '../../lib/files.js';
 import { probe } from '../../lib/media.js';
 import * as accounts from '../../core/accounts/accounts.js';
-import { regenerate } from '../../core/scheduling/scheduler.js';
+import { regenerate, comNavegador } from '../../core/scheduling/scheduler.js';
 import * as logger from '../../core/log.js';
 import { MEDIA, MEDIA_TYPES, VIDEO_STATUSES, VIDEO_STATUS } from '../../lib/enums.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
@@ -307,7 +307,9 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
   });
 
   try {
-    const result = await publishReel({
+    // Espera o agendador, se ele estiver publicando: duas publicações ao
+    // mesmo tempo disputam a mesma janela do navegador.
+    const result = await comNavegador(async () => publishReel({
       accountId: video.accountId,
       filepath: video.filepath,
       videoName: video.filename,
@@ -315,7 +317,7 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
         || (await prisma.settings.findUnique({ where: { id: 1 } }))?.defaultCaption || '',
       coverPath: await covers.resolveFor(video),
       aiLabel: video.account.aiLabel,
-    });
+    }));
 
     const moved = moveTo(video.filepath, config.paths.published);
     const publishedAt = new Date();
