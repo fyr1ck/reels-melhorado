@@ -156,7 +156,15 @@ router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
         durationSec: meta.durationSec ?? null,
         width: meta.width ?? null,
         height: meta.height ?? null,
-        coverPath: await covers.padraoDaConta(accountId, settings),
+        // A capa padrão NÃO é gravada aqui.
+        //
+        // Gravar no upload congelava a escolha: trocar a capa da conta depois
+        // não mexia em nada do que já estava na fila, e o usuário via a capa
+        // antiga continuar saindo sem entender por quê. Deixando vazio, quem
+        // resolve é `covers.resolveFor` na hora de publicar — que já procura a
+        // capa da conta e depois a geral. Só a capa escolhida PARA ESTE VÍDEO
+        // preenche o campo, e é justamente ela que deve ter prioridade.
+
       },
     });
     proxima.set(accountId, proxima.get(accountId) + 1);

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { prisma } from '../../db/prisma.js';
 import { config } from '../../config/env.js';
 import { MEDIA, VIDEO_STATUS, ACCOUNT_STATUS, SCHEDULE_MODE } from '../../lib/enums.js';
@@ -6,6 +7,7 @@ import { aplicarLimites, chaveDoDia, esperaDaTentativa, tetoDoDia } from './limi
 import * as accounts from '../accounts/accounts.js';
 import * as logger from '../log.js';
 import { publishReel } from '../publishing/reel.js';
+import { keepOnly, closeAll } from '../../playwright/browser.js';
 import { STORY_UNSUPPORTED_REASON } from '../publishing/story.js';
 import { moveTo } from '../../lib/files.js';
 import * as covers from '../queue/covers.js';
@@ -24,6 +26,9 @@ export function start() {
 export function stop() {
   if (timer) clearInterval(timer);
   timer = null;
+  // Parar a automação fecha as janelas: deixá-las abertas consumindo memória
+  // depois de o usuário mandar parar seria o oposto do que ele pediu.
+  closeAll().catch(() => {});
 }
 
 /**
@@ -333,6 +338,15 @@ async function tick() {
 
   busy = true;
   try {
+    // Uma janela por vez: fecha a das OUTRAS contas antes de começar.
+    //
+    // Fechar depois de cada publicação (o que eu tentei antes) obrigava a
+    // próxima a abrir um contexto frio, e a interface do Instagram nem sempre
+    // terminava de montar a tempo — o botão de criar publicação passou a não
+    // ser encontrado. Assim a janela da conta que está publicando continua
+    // quente entre publicações seguidas dela.
+    await keepOnly(due.accountId).catch(() => {});
+
     await run(due);
   } catch (err) {
     await logger.error({ action: 'ERRO_AGENDADOR', message: err.message });
@@ -361,6 +375,32 @@ async function run(publication) {
     await logger.warn({
       action: 'STORY_IGNORADO', accountId: account.id, videoName: video.filename,
       message: STORY_UNSUPPORTED_REASON,
+    });
+    return;
+  }
+
+  // O arquivo ainda está no disco?
+  //
+  // Apagar os vídeos pela pasta (sem passar pelo painel) deixa o registro na
+  // fila apontando para o nada. Sem esta checagem, o agendador tentava
+  // publicar, tomava ENOENT, gastava as três tentativas e PAUSAVA A CONTA —
+  // por um arquivo que o usuário mesmo removeu. Falhar aqui é imediato,
+  // explica o motivo e não mexe no estado da conta: não é problema dela.
+  if (!fs.existsSync(video.filepath)) {
+    await prisma.video.update({
+      where: { id: video.id },
+      data: { status: VIDEO_STATUS.FAILED, failedAt: new Date() },
+    });
+    await prisma.publication.update({
+      where: { id: publication.id },
+      data: {
+        status: VIDEO_STATUS.FAILED,
+        errorMessage: 'O arquivo não está mais no disco.',
+      },
+    });
+    await logger.error({
+      action: 'ARQUIVO_SUMIU', accountId: account.id, videoName: video.filename,
+      message: `${video.filepath} não existe mais. O registro foi marcado como falhado — remova-o em Fila > Falhados.`,
     });
     return;
   }

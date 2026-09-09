@@ -41,6 +41,24 @@ export async function contextFor(accountId) {
   return context;
 }
 
+/**
+ * Deixa aberta só a janela desta conta, fechando as das outras.
+ *
+ * Cada conta tem seu contexto, e contexto aberto é uma janela do Chromium na
+ * tela: com duas contas ficavam duas janelas, com dez ficariam dez. Chamado
+ * ANTES de publicar, isto garante uma de cada vez.
+ *
+ * Por que não fechar depois de cada publicação: o contexto recém-criado chega
+ * "frio" — a interface do Instagram demora mais para montar, e o botão de
+ * criar publicação chegava a não ser encontrado a tempo. Mantendo o da conta
+ * ativa vivo, publicações seguidas da mesma conta reaproveitam a janela quente.
+ */
+export async function keepOnly(accountId) {
+  for (const id of [...contexts.keys()]) {
+    if (id !== accountId) await closeContext(id);
+  }
+}
+
 /** Persiste a sessão da conta e fecha só o contexto dela. */
 export async function closeContext(accountId) {
   const context = contexts.get(accountId);

@@ -271,6 +271,20 @@ export default function Queue() {
     return 'Sem legenda — e nem a conta nem as Configurações têm uma padrão. Vai ao ar sem texto.';
   })();
 
+  /**
+   * O @ de uma conta pelo id.
+   *
+   * A fila é filtrada pela conta do seletor, mas o cartão não dizia qual era —
+   * e depois de distribuir um lote entre várias, essa é a informação que o
+   * usuário procura primeiro.
+   */
+  const nomeDaConta = (id) => accounts.find((a) => a.id === id)?.username ?? '—';
+
+  // A conta tem capa padrão? Define se o vídeo sem capa própria ainda assim
+  // vai sair com uma.
+  const temCapaHerdada = !!(account?.useDefaultCover && account?.defaultCoverPath)
+    || !!(settings?.useDefaultCover && settings?.defaultCoverPath);
+
   const lista = ordem ?? visiveis;
 
   // Arrastar só faz sentido na fila de espera: a ordem de quem já publicou não
@@ -625,7 +639,17 @@ export default function Queue() {
                     {v.mediaType === 'STORY' ? 'story' : 'reel'}
                   </Badge>
                   <Badge tone={TOM[v.status]}>{v.status.toLowerCase()}</Badge>
-                  {v.coverPath && <Badge tone="brand">capa</Badge>}
+
+                  {/* Para qual conta este vídeo vai.
+                      Com várias contas — e ainda mais depois de distribuir um
+                      lote — a fila não dizia o destino de cada item, e a única
+                      forma de descobrir era trocar a conta no seletor e
+                      comparar as listas. */}
+                  <Badge tone="brand">@{nomeDaConta(v.accountId)}</Badge>
+
+                  {(v.coverPath || temCapaHerdada) && (
+                    <Badge tone="muted">{v.coverPath ? 'capa própria' : 'capa da conta'}</Badge>
+                  )}
                 </div>
 
                 <div className="vid__meta faint">

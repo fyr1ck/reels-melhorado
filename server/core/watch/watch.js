@@ -243,7 +243,9 @@ async function importOne(folder, file) {
       durationSec: meta.durationSec,
       width: meta.width,
       height: meta.height,
-      coverPath: await covers.padraoDaConta(folder.accountId, settings),
+      // Vazio de propósito: a capa é resolvida na publicação, para que trocar
+      // a capa da conta valha também para o que já está na fila.
+      // Ver server/http/routes/videos.js, no upload.
     },
   });
 

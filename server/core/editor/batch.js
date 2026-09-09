@@ -262,9 +262,9 @@ export async function addToQueue(batchId, { autoSchedule = false } = {}) {
         // continuam sendo o mesmo conteúdo, e é assim que precisam aparecer na
         // seção de conteúdo repetido.
         contentHash: fingerprint(item.sourcePath),
-        // Capa da conta de destino (ou a geral). O lote gera o vídeo, não a
-        // capa — sem isto, tudo que sai do editor entraria na fila sem nenhuma.
-        coverPath: await covers.padraoDaConta(batch.accountId),
+        // Sem capa gravada: quem resolve é a publicação, olhando a capa da
+        // conta e depois a geral. Assim, trocar a capa da conta vale também
+        // para o que o editor já mandou para a fila.
         sizeBytes: sizeOf(item.outputPath),
         durationSec: meta.duration ?? null,
         width: meta.width ?? null,

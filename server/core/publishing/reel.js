@@ -379,7 +379,26 @@ export async function publishReel({ filepath, caption, videoName, coverPath, acc
       timeout: 30_000,
     }).catch(() => null);
 
-    const opened = await clickFirstMatch(page, SELECTORS.createButton);
+    let opened = await clickFirstMatch(page, SELECTORS.createButton);
+
+    // Segunda chance com recarga.
+    //
+    // Numa janela recém-aberta o Instagram às vezes serve uma tela incompleta
+    // — a barra lateral nunca termina de montar. Recarregar resolve, e é bem
+    // mais barato que falhar a publicação e gastar uma tentativa.
+    if (!opened) {
+      await logEvent({
+        video: videoName, action: 'RECARREGANDO_FEED', status: 'WARNING',
+        message: 'Botão de criar não apareceu na primeira carga; recarregando a página.',
+      });
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await page.waitForSelector(SELECTORS.createButton.join(', '), {
+        state: 'visible',
+        timeout: 30_000,
+      }).catch(() => null);
+      opened = await clickFirstMatch(page, SELECTORS.createButton);
+    }
+
     if (!opened) {
       throw new Error(
         'Botão de criar publicação não encontrado. Rode GET /api/accounts/<id>/diagnostico: '

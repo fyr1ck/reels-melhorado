@@ -151,7 +151,10 @@ export default function Accounts() {
             <div className="acc__stats">
               <div><b>{a.reels}</b><span>reels</span></div>
               <div><b>{days(a.coverageDays)}</b><span>cobertura</span></div>
-              <div><b>{a.slots}</b><span>horários/dia</span></div>
+              {/* O RITMO, não a contagem de horários: nos modos "volume por
+                  dia" e "a cada X tempo" não existem horários cadastrados, e o
+                  cartão mostrava 0 numa conta que publica 43 vezes ao dia. */}
+              <div><b>{a.dailyRate}</b><span>por dia</span></div>
               <div><b>{a.published}</b><span>publicados</span></div>
             </div>
 

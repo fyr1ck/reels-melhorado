@@ -6,7 +6,7 @@ import * as auth from '../../core/accounts/auth.js';
 import { regenerate } from '../../core/scheduling/scheduler.js';
 import { closeContext } from '../../playwright/browser.js';
 import * as logger from '../../core/log.js';
-import { ACCOUNT_STATUSES, SCHEDULE_MODES } from '../../lib/enums.js';
+import { ACCOUNT_STATUSES, SCHEDULE_MODES, VIDEO_STATUS } from '../../lib/enums.js';
 import { ConflictError, ValidationError } from '../../lib/errors.js';
 import * as v from '../../lib/validate.js';
 import multer from 'multer';
@@ -157,6 +157,30 @@ router.post('/:id/cover', coverUpload.single('cover'), wrap(async (req, res) => 
     where: { id: account.id },
     data: { defaultCoverPath: filename, useDefaultCover: true },
   });
+
+  // Solta os vídeos da fila que ainda carregam a capa ANTIGA gravada.
+  //
+  // Versões anteriores gravavam a capa padrão no vídeo já na entrada. Esses
+  // registros não seguiriam a troca, e o usuário veria a capa antiga continuar
+  // saindo depois de mudá-la. Zerar o campo faz cada um voltar a herdar — a
+  // capa escolhida individualmente para um vídeo tem outro valor e não é
+  // tocada aqui.
+  if (anterior && anterior !== filename) {
+    const soltos = await prisma.video.updateMany({
+      where: {
+        accountId: account.id,
+        coverPath: anterior,
+        status: { in: [VIDEO_STATUS.PENDING, VIDEO_STATUS.SCHEDULED] },
+      },
+      data: { coverPath: null },
+    });
+    if (soltos.count) {
+      await logger.info({
+        action: 'CAPA_DA_FILA_ATUALIZADA', accountId: account.id,
+        message: `${soltos.count} vídeo(s) na fila passam a usar a capa nova.`,
+      });
+    }
+  }
 
   // A imagem é nomeada pelo hash e pode ser compartilhada com vídeos e com
   // outras contas — cleanupIfOrphan confere isso antes de apagar.
