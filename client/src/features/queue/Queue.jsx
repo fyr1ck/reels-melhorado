@@ -3,6 +3,7 @@ import {
   Upload, Trash2, Pencil, Film, Check, X, Zap, Image, CheckSquare, Square, Split, Users, Search,
   RefreshCcw, GripVertical,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { assetUrl } from '../../lib/canvas.js';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
 import { useAccount } from '../../hooks/useAccount.jsx';
@@ -22,6 +23,10 @@ const ABAS = [
 ];
 
 const TOM = { PENDING: 'muted', SCHEDULED: 'brand', PUBLISHING: 'warn', PUBLISHED: 'ok', FAILED: 'danger' };
+
+/* A cor da etiqueta de nicho segue a DECISÃO, não o nicho. Verde é "pode ir",
+   amarelo é "alguém precisa olhar", vermelho é "não vai". */
+const TOM_NICHO = { APROVADO: 'ok', REVISAO: 'warn', BLOQUEADO: 'danger', SEM_CLASSIFICACAO: 'muted' };
 
 /**
  * Primeira linha da legenda, curta.
@@ -56,6 +61,11 @@ export default function Queue() {
   // Guardado no navegador: com `useState`, trocar de seção no menu desmontava
   // a tela e a escolha voltava para "uma conta só" sozinha.
   const [distribuir, setDistribuir] = usePreferencia('rm.distribuir', false);
+  // Terceiro modo, como preferência SEPARADA em vez de trocar o booleano por
+  // uma string: assim quem já usava a tela não perde a escolha guardada, e o
+  // caminho de "distribuir entre contas" continua exatamente o mesmo código.
+  // Os dois nunca ficam ligados juntos — os botões cuidam disso.
+  const [porNicho, setPorNicho] = usePreferencia('rm.porNicho', false);
   const [contasSel, setContasSel] = useConjuntoPreferido('rm.distribuirContas');
 
   const [busca, setBusca] = useState('');
@@ -68,6 +78,12 @@ export default function Queue() {
   const [limite, setLimite] = useState(60);
 
   const { data: settings, reload: reloadSettings } = useQuery('/settings');
+
+  // O modo por nicho só faz sentido com pelo menos uma conta vinculada a um
+  // nicho: sem vínculo não há para onde mandar, e o modo mandaria tudo para a
+  // conta de reserva — o mesmo que "uma conta só", com um rótulo enganoso.
+  const { data: nichos } = useQuery('/niches', { params: { ativos: '1' } });
+  const temNichos = (nichos ?? []).some((n) => n.accounts?.length);
   const padraoRef = useRef(null);
 
   const { data: videos, loading, reload } = useQuery('/videos', {
@@ -103,14 +119,23 @@ export default function Queue() {
   });
 
   const enviar = useMutation(async (files) => {
-    if (distribuir && alvos.length < 2) {
+    if (distribuir && !porNicho && alvos.length < 2) {
       throw new Error('Escolha ao menos duas contas para distribuir.');
     }
 
     const fd = new FormData();
     for (const f of files) fd.append('videos', f);
-    if (distribuir) for (const a of alvos) fd.append('accountIds', a.id);
-    else fd.append('accountId', accountId);
+
+    if (porNicho) {
+      // A conta do seletor vai junto como destino de reserva: é para onde cai
+      // o vídeo que nenhum nicho reconheceu, para o arquivo não se perder.
+      fd.append('modo', 'NICHO');
+      fd.append('accountId', accountId);
+    } else if (distribuir) {
+      for (const a of alvos) fd.append('accountIds', a.id);
+    } else {
+      fd.append('accountId', accountId);
+    }
 
     const r = await api.post('/videos', fd);
     await reload({ quiet: true });
@@ -361,16 +386,18 @@ export default function Queue() {
         title="Para onde vão os vídeos"
         icon={Split}
         action={
-          <Badge tone={distribuir ? 'brand' : 'muted'}>
-            {distribuir ? `${alvos.length} contas` : `@${account?.username ?? '—'}`}
+          <Badge tone={porNicho ? 'ok' : distribuir ? 'brand' : 'muted'}>
+            {porNicho
+              ? 'pelo nicho'
+              : distribuir ? `${alvos.length} contas` : `@${account?.username ?? '—'}`}
           </Badge>
         }
       >
         <div className="dist__modos">
           <button
             type="button"
-            className={`dist__modo${!distribuir ? ' is-active' : ''}`}
-            onClick={() => setDistribuir(false)}
+            className={`dist__modo${!distribuir && !porNicho ? ' is-active' : ''}`}
+            onClick={() => { setDistribuir(false); setPorNicho(false); }}
           >
             <b>Uma conta só</b>
             <span>Tudo entra na fila de @{account?.username ?? '—'}, a conta do seletor.</span>
@@ -378,8 +405,8 @@ export default function Queue() {
 
           <button
             type="button"
-            className={`dist__modo${distribuir ? ' is-active' : ''}`}
-            onClick={() => setDistribuir(true)}
+            className={`dist__modo${distribuir && !porNicho ? ' is-active' : ''}`}
+            onClick={() => { setDistribuir(true); setPorNicho(false); }}
             disabled={accounts.length < 2}
             title={accounts.length < 2 ? 'Adicione uma segunda conta para poder distribuir.' : undefined}
           >
@@ -388,7 +415,30 @@ export default function Queue() {
               Reparte o lote: cada vídeo vai para UMA conta. Nenhuma recebe o que a outra já tem.
             </span>
           </button>
+
+          {/* O modo que fecha o ciclo dos nichos: em vez de rodízio, cada vídeo
+              vai para a conta que publica o assunto DELE. */}
+          <button
+            type="button"
+            className={`dist__modo${porNicho ? ' is-active' : ''}`}
+            onClick={() => { setPorNicho(true); setDistribuir(false); }}
+            disabled={!temNichos}
+            title={temNichos ? undefined : 'Cadastre um nicho e vincule-o a uma conta em Nichos.'}
+          >
+            <b>Pelo nicho do vídeo</b>
+            <span>
+              Classifica cada arquivo e manda para a conta daquele assunto. O que nenhum nicho
+              reconhecer cai em @{account?.username ?? '—'} e aparece em Nichos &gt; Revisão.
+            </span>
+          </button>
         </div>
+
+        {porNicho && !temNichos && (
+          <p className="faint mt">
+            Nenhuma conta tem nicho vinculado ainda — sem isso não há para onde mandar.
+            Configure em <Link to="/nichos">Nichos &gt; Contas</Link>.
+          </p>
+        )}
 
         {distribuir && (
           <>
@@ -652,6 +702,23 @@ export default function Queue() {
 
                   {(v.coverPath || temCapaHerdada) && (
                     <Badge tone="muted">{v.coverPath ? 'capa própria' : 'capa da conta'}</Badge>
+                  )}
+
+                  {/* O nicho, quando o vídeo tem um.
+                      Sem isto a classificação existia só na tela de Nichos, e
+                      quem olha a fila não tinha como saber por que um vídeo
+                      seria barrado — nem que ele havia sido classificado. */}
+                  {v.classification?.niche && (
+                    <span title={`${Math.round(v.classification.score)}% de compatibilidade`}>
+                      <Badge tone={TOM_NICHO[v.classification.status] ?? 'muted'} className="ui-badge--dot">
+                        {v.classification.niche.name}
+                      </Badge>
+                    </span>
+                  )}
+                  {v.classification && !v.classification.niche && (
+                    <span title="Nenhum nicho reconheceu este vídeo">
+                      <Badge tone="muted" className="ui-badge--dot">sem nicho</Badge>
+                    </span>
                   )}
                 </div>
 

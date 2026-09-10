@@ -57,7 +57,23 @@ router.get('/', wrap(async (req, res) => {
     where.mediaType = v.oneOf(req.query.mediaType, MEDIA_TYPES, { field: 'Tipo' });
   }
 
-  res.json(await prisma.video.findMany({ where, orderBy: { sortOrder: 'asc' } }));
+  // A classificação vem junto, quando existe.
+  //
+  // Campo NOVO e opcional na MESMA rota: a fila continua devolvendo tudo o que
+  // devolvia, e a tela só desenha a etiqueta de nicho quando o vídeo tem uma.
+  // Uma segunda rota só para isso obrigaria a fila a fazer duas chamadas e a
+  // casá-las na tela.
+  const videos = await prisma.video.findMany({
+    where,
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      classification: {
+        select: { status: true, score: true, niche: { select: { id: true, name: true } } },
+      },
+    },
+  });
+
+  res.json(videos);
 }));
 
 /**
@@ -91,8 +107,21 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
     .concat(req.body.accountIds ?? [])
     .filter(Boolean);
 
+  // Modo "por nicho": a conta de cada vídeo sai da classificação, não do
+  // seletor nem do rodízio. Fica ANTES dos outros dois porque não depende de
+  // quantas contas foram marcadas — ele olha os vínculos conta<->nicho.
+  const porNicho = req.body.modo === 'NICHO';
+
   let destinos;
-  if (pedidas.length > 1) {
+  if (porNicho) {
+    const todas = await prisma.account.findMany({
+      where: { enabled: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, username: true },
+    });
+    if (!todas.length) throw new ValidationError('Nenhuma conta habilitada para receber os vídeos.');
+    destinos = todas;
+  } else if (pedidas.length > 1) {
     destinos = await distribute.contasValidas(pedidas);
     if (destinos.length < 2) {
       throw new ValidationError('Selecione ao menos duas contas para distribuir.');
@@ -106,9 +135,20 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
 
   // Reparte antes de gravar: assim a atribuição olha a fila como ela está
   // agora, sem contar os vídeos deste mesmo lote duas vezes.
-  const plano = distribuindo
-    ? distribute.repartir(files, await distribute.cargas(destinos.map((d) => d.id)))
-    : files.map((file) => ({ item: file, accountId: destinos[0].id }));
+  let plano;
+  if (porNicho) {
+    // A conta padrão é a do seletor: é para onde vai o que nenhum nicho
+    // reconheceu, para o arquivo não se perder.
+    const padrao = await accounts.resolve(req.body.accountId);
+    plano = await classify.planejarPorNicho(files, {
+      contaPadrao: padrao.id,
+      nomeDe: (f) => nomeOriginal(f.originalname),
+    });
+  } else if (distribuindo) {
+    plano = distribute.repartir(files, await distribute.cargas(destinos.map((d) => d.id)));
+  } else {
+    plano = files.map((file) => ({ item: file, accountId: destinos[0].id }));
+  }
 
   const nomePorConta = new Map(destinos.map((d) => [d.id, d.username]));
 
@@ -126,7 +166,7 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
   const skipped = [];
   const tocadas = new Set();
 
-  for (const { item: file, accountId } of plano) {
+  for (const { item: file, accountId, classificacao } of plano) {
     const contentHash = fingerprint(file.path);
 
     // O mesmo arquivo na fila de outra conta é o problema que a seção
@@ -173,6 +213,14 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
 
       },
     });
+    // A classificação do modo por nicho já foi calculada; gravar aqui evita
+    // classificar o mesmo arquivo duas vezes.
+    if (classificacao) {
+      await classify.gravarClassificacao(video.id, classificacao).catch(() => {
+        /* classificação é acessório: nunca derruba o upload */
+      });
+    }
+
     proxima.set(accountId, proxima.get(accountId) + 1);
     tocadas.add(accountId);
     created.push({ ...video, accountUsername: nomePorConta.get(accountId) });
@@ -190,7 +238,7 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
   // Um lote de 300 vídeos com a IA ligada levaria minutos; segurar a resposta
   // do upload por isso transformaria uma melhoria em travamento. O vídeo entra
   // na fila do mesmo jeito e a classificação aparece quando ficar pronta.
-  classify.classificarEmSegundoPlano(created.map((v) => v.id));
+  if (!porNicho) classify.classificarEmSegundoPlano(created.map((v) => v.id));
 
   // Quanto cada conta recebeu — é o que a tela mostra depois de distribuir.
   const porConta = destinos.map((d) => ({

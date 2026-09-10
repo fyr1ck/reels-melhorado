@@ -211,6 +211,83 @@ export async function classificar(videoOuId, { forcarIa = null } = {}) {
   });
 }
 
+/**
+ * Classifica um TEXTO, sem que o vídeo precise existir no banco.
+ *
+ * É o que permite decidir a conta ANTES de criar o registro: o classificador é
+ * puro, então o nome do arquivo já basta. Sem isto, distribuir por nicho teria
+ * de criar o vídeo numa conta qualquer para depois movê-lo — e um vídeo que
+ * nasce na conta errada pode ser pego por um tick do agendador no meio do
+ * caminho.
+ */
+export async function classificarTexto({ filename, caption = '', folderPath = '' }) {
+  const cfg = await config();
+  const niches = await prisma.niche.findMany({ where: { active: true } });
+  if (!niches.length) return { ranking: [], topo: null, status: STATUS.SEM_CLASSIFICACAO, cfg };
+
+  const contexto = contextoDe({ filename, caption, folderPath });
+  const ranking = ranquear(contexto, niches);
+  const topo = ranking[0];
+  const temNicho = topo && topo.score >= PISO_PARA_TER_NICHO;
+
+  return {
+    ranking,
+    topo: temNicho ? topo : null,
+    status: temNicho
+      ? decidir(topo.score, { approve: cfg.approve, review: cfg.review })
+      : STATUS.SEM_CLASSIFICACAO,
+    cfg,
+  };
+}
+
+/**
+ * Monta o plano "cada arquivo para a conta do seu nicho".
+ *
+ * Devolve o mesmo formato de `distribute.repartir` — { item, accountId } — de
+ * propósito: o upload não precisa saber qual modo produziu o plano, e a fila
+ * que recebe continua sendo a mesma.
+ *
+ * O que NÃO acha conta cai na `contaPadrao` (a do seletor) com a classificação
+ * gravada assim mesmo. Recusar o arquivo seria pior: a pessoa mandou 40 vídeos
+ * e não pode perder 6 porque o nicho ainda não está bem descrito — eles entram
+ * e aparecem em Nichos > Revisão.
+ */
+export async function planejarPorNicho(arquivos, { contaPadrao, nomeDe = (f) => f.originalname }) {
+  const plano = [];
+
+  for (const item of arquivos) {
+    const { ranking, topo, status } = await classificarTexto({ filename: nomeDe(item) });
+
+    const accountId = topo ? (await melhorConta(topo.nicheId)) : null;
+
+    plano.push({
+      item,
+      accountId: accountId ?? contaPadrao,
+      // Guardado para o upload gravar a classificação junto com o vídeo, sem
+      // ter de classificar tudo de novo depois.
+      classificacao: {
+        nicheId: topo?.nicheId ?? null,
+        score: topo?.score ?? 0,
+        status,
+        scores: ranking.map((r) => ({ nicheId: r.nicheId, name: r.name, score: r.score, motivos: r.motivos })),
+        reasons: topo
+          ? topo.motivos
+          : ['Nenhum nicho cadastrado teve compatibilidade suficiente.'],
+        recommendedAccountId: accountId,
+        source: 'REGRAS',
+      },
+      semConta: !accountId,
+    });
+  }
+
+  return plano;
+}
+
+/** Grava uma classificação já calculada. Usado pelo upload por nicho. */
+export async function gravarClassificacao(videoId, dados) {
+  return gravar(videoId, dados);
+}
+
 /** A conta mais compatível com um nicho: principal na frente da secundária. */
 export async function melhorConta(nicheId) {
   const vinculos = await prisma.accountNiche.findMany({
