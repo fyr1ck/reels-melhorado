@@ -277,19 +277,39 @@ async function escolherRecorteOriginal(page, videoName, timeoutMs = 120_000) {
 
   await page.waitForTimeout(600);
 
-  const escolheu = await clickNaJanela(page, SELECTORS.cropOriginal);
+  // O menu de recorte é um popover, e o Instagram monta popover FORA do
+  // div[role="dialog"] — solto no corpo da página. Um clique escopado à janela
+  // não alcança: o menu abria e "Original" nunca era clicado. Daí a segunda
+  // tentativa na página inteira.
+  const escolheu = await clickNaJanela(page, SELECTORS.cropOriginal)
+    || await clickFirstMatch(page, SELECTORS.cropOriginal);
 
-  await logEvent({
-    video: videoName,
-    action: escolheu ? 'RECORTE_ORIGINAL' : 'RECORTE_NAO_ENCONTRADO',
-    status: escolheu ? 'INFO' : 'WARNING',
-    message: escolheu
-      ? 'Recorte "Original": o vídeo vai inteiro, sem corte quadrado.'
-      : 'O menu de recorte abriu mas "Original" não estava nele — confira server/playwright/selectors.js.',
-  });
+  if (escolheu) {
+    await logEvent({
+      video: videoName, action: 'RECORTE_ORIGINAL', status: 'INFO',
+      message: 'Recorte "Original": o vídeo vai inteiro, sem corte quadrado.',
+    });
+  } else {
+    // Diz o que o menu tinha de verdade. Sem isso, "não encontrei" não
+    // distingue nome trocado de menu que nem abriu.
+    const opcoes = await page.evaluate(() => {
+      const vistos = [];
+      for (const el of document.querySelectorAll('[role="button"], button, [role="menuitem"], div[tabindex="0"]')) {
+        const t = (el.innerText || '').trim();
+        if (t && t.length <= 24 && !vistos.includes(t)) vistos.push(t);
+      }
+      return vistos.slice(0, 25);
+    }).catch(() => []);
 
-  // Fecha o menu, senão ele fica por cima do "Avançar".
-  if (!escolheu) await page.keyboard.press('Escape').catch(() => {});
+    await logEvent({
+      video: videoName, action: 'RECORTE_NAO_ENCONTRADO', status: 'WARNING',
+      message: `"Original" não foi clicado. Na tela havia: ${opcoes.join(' | ') || '(nada legível)'}`,
+    });
+
+    // Fecha o menu, senão ele fica por cima do "Avançar".
+    await page.keyboard.press('Escape').catch(() => {});
+  }
+
   await page.waitForTimeout(400);
 }
 

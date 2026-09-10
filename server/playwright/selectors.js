@@ -115,13 +115,19 @@ export const SELECTORS = {
   // O Instagram abre TODO vídeo já recortado em 1:1. Sem passar por aqui, um
   // reel vertical vai ao ar quadrado, com as bordas cortadas — e nada no
   // arquivo denuncia isso, porque o corte é decisão do Instagram.
+  // Em 09/09/2026, na interface real, o rótulo é "Selecionar corte" — não
+  // "Selecionar recorte", que era o que este arquivo procurava. O sintoma era
+  // silencioso: o menu nunca abria e o vídeo saía quadrado sem nada no log.
+  //
+  // "Cortar" saiu da lista de propósito: é o TÍTULO da janela nessa etapa, e
+  // um clique nele não abre menu nenhum.
   cropButton: [
+    'svg[aria-label="Selecionar corte"]',
+    '[aria-label="Selecionar corte"]',
     'svg[aria-label="Selecionar recorte"]',
     '[aria-label="Selecionar recorte"]',
     'svg[aria-label="Select crop"]',
     '[aria-label="Select crop"]',
-    'svg[aria-label="Cortar"]',
-    'svg[aria-label="Crop"]',
   ],
 
   // A opção "Original" dentro daquele menu. Match EXATO: o `text=` do

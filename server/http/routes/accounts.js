@@ -7,7 +7,7 @@ import { regenerate, comNavegador } from '../../core/scheduling/scheduler.js';
 import { closeContext } from '../../playwright/browser.js';
 import * as logger from '../../core/log.js';
 import { ACCOUNT_STATUSES, SCHEDULE_MODES, VIDEO_STATUS } from '../../lib/enums.js';
-import { ConflictError, ValidationError } from '../../lib/errors.js';
+import { ConflictError, ValidationError, NotFoundError } from '../../lib/errors.js';
 import * as v from '../../lib/validate.js';
 import multer from 'multer';
 import { config } from '../../config/env.js';
@@ -286,6 +286,22 @@ router.delete('/:id', wrap(async (req, res) => {
 
   await logger.info({ action: 'CONTA_REMOVIDA', message: `@${account.username}` });
   res.json({ ok: true });
+}));
+
+/**
+ * GET /:id/diagnostico-recorte?videoId=... — sobe um vídeo e para na tela de
+ * corte, para ver o que o menu de recorte tem de verdade. NÃO publica.
+ */
+router.get('/:id/diagnostico-recorte', wrap(async (req, res) => {
+  const account = await accounts.requireAccount(req.params.id);
+
+  const video = req.query.videoId
+    ? await prisma.video.findUnique({ where: { id: String(req.query.videoId) } })
+    : await prisma.video.findFirst({ where: { accountId: account.id, status: VIDEO_STATUS.PENDING } });
+
+  if (!video) throw new NotFoundError('Nenhum vídeo disponível para o teste.');
+
+  res.json(await publishDiag.inspecionarRecorte(account.id, video.filepath));
 }));
 
 /** Chave-mestra: liga/pausa a automação de todas as contas conectadas. */
