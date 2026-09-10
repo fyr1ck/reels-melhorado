@@ -72,7 +72,11 @@ router.get('/', wrap(async (req, res) => {
  * Em ambos, um arquivo cujo conteúdo já está na fila de outra conta é
  * recusado (a menos que o bloqueio esteja desligado nas Configurações).
  */
-router.post('/', upload.array('videos', 100), wrap(async (req, res) => {
+// 500 e nao 100: a pasta de onde os videos vem costuma ter lotes maiores que
+// isso, e o multer sinaliza o estouro com LIMIT_UNEXPECTED_FILE -- cuja
+// mensagem crua, "Unexpected field", nao diz nem que o problema foi a
+// quantidade. O middleware de erro traduz; o limite maior evita o encontro.
+router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
   const files = req.files || [];
   if (!files.length) throw new ValidationError('Nenhum vídeo enviado.');
 

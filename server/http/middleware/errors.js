@@ -30,6 +30,22 @@ export function errorHandler(err, req, res, _next) {
     return res.status(404).json({ error: 'Registro não encontrado.', code: 'NAO_ENCONTRADO' });
   }
 
+  // Erros do multer chegam aqui em inglês e sem contexto nenhum. O pior é
+  // LIMIT_UNEXPECTED_FILE: ele é o que o multer devolve quando passa do número
+  // máximo de arquivos, e a mensagem crua — "Unexpected field" — não diz nem
+  // que o problema foi a quantidade. Quem enviou 150 vídeos de uma vez ficava
+  // sem pista nenhuma do que fazer.
+  const upload = {
+    LIMIT_UNEXPECTED_FILE: 'Arquivos demais de uma vez, ou um campo de arquivo inesperado. '
+      + 'Envie em lotes menores.',
+    LIMIT_FILE_SIZE: 'Arquivo grande demais para o limite configurado.',
+    LIMIT_FILE_COUNT: 'Arquivos demais de uma vez. Envie em lotes menores.',
+    LIMIT_PART_COUNT: 'Partes demais no envio. Envie em lotes menores.',
+  };
+  if (upload[err?.code]) {
+    return res.status(400).json({ error: upload[err.code], code: err.code });
+  }
+
   logger.error({ action: 'ERRO_NAO_TRATADO', message: `${req.method} ${req.path}: ${err.message}` });
   console.error(err);
 
