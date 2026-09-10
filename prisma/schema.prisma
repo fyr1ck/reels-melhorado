@@ -137,7 +137,9 @@ model Video {
   status    String @default("PENDING")
 
   durationSec Float?
-  sizeBytes   Int?
+  /// Float pelo mesmo motivo de ImportedFile.sizeBytes: `Int` no Prisma e de
+  /// 32 bits e estoura a partir de 2,1 GB, tamanho comum de video.
+  sizeBytes   Float?
   width       Int?
   height      Int?
 
@@ -339,7 +341,9 @@ model SourceVideo {
   filename    String
   filepath    String
   durationSec Float?
-  sizeBytes   Int?
+  /// Float pelo mesmo motivo de ImportedFile.sizeBytes: `Int` no Prisma e de
+  /// 32 bits e estoura a partir de 2,1 GB, tamanho comum de video.
+  sizeBytes   Float?
   width       Int?
   height      Int?
   createdAt   DateTime @default(now())
@@ -391,8 +395,20 @@ model ImportedFile {
   watchFolder   WatchFolder @relation(fields: [watchFolderId], references: [id], onDelete: Cascade)
 
   sourcePath String
-  sizeBytes  Int
-  mtimeMs    Int
+
+  /// Float, e não Int, nos dois: `Int` no Prisma é de 32 bits, e nenhum dos
+  /// dois cabe lá. `mtimeMs` é um instante em milissegundos — passou de
+  /// 2.147.483.647 em 2038 no formato de segundos e há muito mais tempo em
+  /// milissegundos, então TODA varredura falhava com "does not fit in an INT
+  /// column". `sizeBytes` estoura no mesmo lugar a partir de 2,1 GB, que é
+  /// tamanho de vídeo perfeitamente comum.
+  ///
+  /// Float aqui é um double: representa inteiros exatos até 2^53, muito além
+  /// do necessário. BigInt resolveria o alcance, mas volta como BigInt no
+  /// cliente e BigInt não sobrevive a JSON.stringify — quebraria as respostas
+  /// da API em vez da varredura.
+  sizeBytes  Float
+  mtimeMs    Float
 
   videoId String? @unique
   video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
