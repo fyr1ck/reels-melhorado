@@ -582,11 +582,22 @@ async function toggleAiLabel(page, videoName) {
  * desistir e seguir sem legenda.
  */
 async function typeCaption(page, videoName, caption) {
-  // Compara ignorando espaço em branco: o campo do Instagram quebra linha
-  // sozinho e devolve os parágrafos de um jeito que não bate caractere a
-  // caractere com o texto de origem.
-  const semEspacos = (t) => (t || '').replace(/\s+/g, '');
-  const esperado = semEspacos(caption);
+  // Normaliza SÓ o que é representação, nunca o conteúdo.
+  //
+  // Ignorar todo espaço em branco — o que esta comparação fazia antes — cega
+  // justamente para o defeito mais comum: um espaço a mais que ninguém digitou.
+  // A legenda podia sair com "#TVアニメ 「ONEPIECE」" no lugar de
+  // "#TVアニメ「ONEPIECE」" e a conferência ainda dizia "88 caracteres conferidos".
+  //
+  // O que segue normalizado é só representação: fim de linha (o campo devolve
+  // CR+LF), espaço inquebrável (o editor troca espaço comum por U+00A0 ao redor
+  // de hashtag) e espaço sobrando no fim das linhas.
+  const normalizar = (t) => (t || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .trim();
+  const esperado = normalizar(caption);
 
   await logEvent({
     video: videoName, action: 'LEGENDA_ENVIADA', status: 'INFO',
@@ -628,7 +639,7 @@ async function typeCaption(page, videoName, caption) {
     // pela metade passava como preenchida.
     let noCampo = '';
     for (let i = 0; i < 10; i++) {
-      noCampo = semEspacos(await captionBox.innerText().catch(() => ''));
+      noCampo = normalizar(await captionBox.innerText().catch(() => ''));
       if (noCampo === esperado) break;
       await page.waitForTimeout(500);
     }
@@ -638,10 +649,19 @@ async function typeCaption(page, videoName, caption) {
       return;
     }
 
+    // Aponta a PRIMEIRA posição diferente, com os arredores dos dois lados.
+    // "não bateu" com dois textos japoneses lado a lado é ilegível; o trecho
+    // exato onde divergiu diz na hora se sobrou um espaço, se faltou um
+    // caractere ou se o texto inteiro é outro.
+    let i = 0;
+    while (i < noCampo.length && i < esperado.length && noCampo[i] === esperado[i]) i++;
+    const trecho = (t) => JSON.stringify(t.slice(Math.max(0, i - 8), i + 8));
+
     await logEvent({
       video: videoName, action: 'LEGENDA_DIVERGENTE', status: 'WARNING',
-      message: `Tentativa ${attempt}: o campo ficou com "${noCampo.slice(0, 50)}" `
-        + `(${noCampo.length} caracteres) e o esperado era "${esperado.slice(0, 50)}" (${esperado.length}).`,
+      message: `Tentativa ${attempt}: divergiu no caractere ${i + 1}. `
+        + `No campo (${noCampo.length} caracteres): ${trecho(noCampo)} — `
+        + `esperado (${esperado.length}): ${trecho(esperado)}`,
     });
   }
 
