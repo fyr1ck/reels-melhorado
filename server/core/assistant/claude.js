@@ -71,6 +71,24 @@ export async function configurado() {
  * @param {string} [args.modelo]
  */
 export async function analisar({ prompt, modelo = 'claude-sonnet-5' }) {
+  const { texto, uso, modelo: usado } = await conversar({
+    system: INSTRUCOES, prompt, modelo, maxTokens: 4096,
+  });
+  return { analise: extrairJson(texto), uso, modelo: usado };
+}
+
+/**
+ * Uma pergunta ao Claude, com as instruções que o chamador quiser.
+ *
+ * Extraído de `analisar` quando a classificação por nichos precisou da mesma
+ * conversa com outro system prompt. A alternativa seria uma segunda integração
+ * com a API — mesma chave, mesmo tratamento de erro, mesmo timeout, escritos
+ * duas vezes e destinados a divergir na primeira manutenção.
+ *
+ * Devolve TEXTO cru: quem chama decide se aquilo é JSON. `analisar` continua
+ * fazendo exatamente o que fazia antes.
+ */
+export async function conversar({ system, prompt, modelo = 'claude-sonnet-5', maxTokens = 4096 }) {
   const apiKey = await chave();
   if (!apiKey) {
     throw new ValidationError(
@@ -89,8 +107,8 @@ export async function analisar({ prompt, modelo = 'claude-sonnet-5' }) {
       },
       body: JSON.stringify({
         model: modelo,
-        max_tokens: 4096,
-        system: INSTRUCOES,
+        max_tokens: maxTokens,
+        system,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -126,7 +144,7 @@ export async function analisar({ prompt, modelo = 'claude-sonnet-5' }) {
     .trim();
 
   return {
-    analise: extrairJson(texto),
+    texto,
     uso: dados.usage ?? null,
     modelo: dados.model ?? modelo,
   };

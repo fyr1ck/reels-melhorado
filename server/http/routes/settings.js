@@ -45,6 +45,29 @@ router.patch('/', wrap(async (req, res) => {
     data.notifyOnSuccess = v.bool(req.body.notifyOnSuccess, { field: 'Avisar em sucesso' });
   }
 
+  // --- separação por nichos ---
+  if (req.body.nicheEnabled !== undefined) {
+    data.nicheEnabled = v.bool(req.body.nicheEnabled, { field: 'Separação por nichos' });
+  }
+  if (req.body.nicheBlockPublish !== undefined) {
+    data.nicheBlockPublish = v.bool(req.body.nicheBlockPublish, { field: 'Impedir publicação incompatível' });
+  }
+  if (req.body.nicheUseAi !== undefined) {
+    data.nicheUseAi = v.bool(req.body.nicheUseAi, { field: 'Classificar com IA' });
+  }
+  if (req.body.nicheApproveScore !== undefined) {
+    data.nicheApproveScore = v.int(req.body.nicheApproveScore, { field: 'Nota de aprovação', min: 1, max: 100 });
+  }
+  if (req.body.nicheReviewScore !== undefined) {
+    data.nicheReviewScore = v.int(req.body.nicheReviewScore, { field: 'Nota de revisão', min: 0, max: 100 });
+  }
+  // Revisão acima de aprovação inverteria as faixas em silêncio: tudo cairia
+  // em REVISÃO e nada seria aprovado nunca.
+  const aprovar = data.nicheApproveScore ?? (await prisma.settings.findUnique({ where: { id: 1 } }))?.nicheApproveScore ?? 90;
+  if (data.nicheReviewScore !== undefined && data.nicheReviewScore > aprovar) {
+    throw new ValidationError('A nota de revisão precisa ser menor que a de aprovação.');
+  }
+
   if (req.body.autoCleanCache !== undefined) {
     data.autoCleanCache = v.bool(req.body.autoCleanCache, { field: 'Limpeza automática' });
   }

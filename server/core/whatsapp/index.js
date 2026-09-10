@@ -199,10 +199,64 @@ export async function responder({ comando, conta }) {
     case 'proximo': return respostaProximo();
     case 'contas': return respostaContas();
     case 'erros': return respostaErros();
+    case 'nichos': return respostaNichos();
+    case 'revisao': return respostaPorStatus('REVISAO', 'em revisão');
+    case 'bloqueados': return respostaPorStatus('BLOQUEADO', 'bloqueado(s)');
     case 'pausar': return mudarEstado(ACCOUNT_STATUS.PAUSED, conta);
     case 'ativar': return mudarEstado(ACCOUNT_STATUS.ACTIVE, conta);
     default: return textoDoMenu();
   }
+}
+
+/**
+ * Os nichos e quem publica cada um.
+ *
+ * Só leitura: os comandos de nicho no WhatsApp informam, não decidem. Aprovar
+ * ou bloquear um vídeo exige ver o vídeo, e isso é tela.
+ */
+async function respostaNichos() {
+  const cfg = await prisma.settings.findUnique({ where: { id: 1 } });
+  const lista = await prisma.niche.findMany({
+    where: { active: true },
+    orderBy: { priority: 'desc' },
+    include: { accounts: { include: { account: { select: { username: true } } } } },
+  });
+
+  if (!lista.length) return 'Nenhum nicho cadastrado. Cadastre em Nichos, no painel.';
+
+  const linhas = lista.map((n) => {
+    const contas = n.accounts.map((a) => `@${a.account.username}`).join(', ');
+    return `• ${n.name}${contas ? ` — ${contas}` : ' — nenhuma conta'}`;
+  });
+
+  const estado = cfg?.nicheEnabled
+    ? (cfg.nicheBlockPublish !== false ? 'ligada e barrando' : 'ligada, só observando')
+    : 'DESLIGADA';
+
+  return `*Nichos* (separação ${estado})\n\n${linhas.join('\n')}`;
+}
+
+async function respostaPorStatus(status, rotulo) {
+  const itens = await prisma.contentClassification.findMany({
+    where: { status },
+    take: 10,
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      video: { select: { filename: true, account: { select: { username: true } } } },
+      niche: { select: { name: true } },
+    },
+  });
+
+  const total = await prisma.contentClassification.count({ where: { status } });
+  if (!total) return `Nenhum vídeo ${rotulo}.`;
+
+  const linhas = itens.map((c) => {
+    const nome = (c.video?.filename ?? '').slice(0, 44);
+    return `• ${nome} — @${c.video?.account?.username ?? '?'} (${Math.round(c.score)}%${c.niche ? `, ${c.niche.name}` : ''})`;
+  });
+
+  const sobra = total > itens.length ? `\n\n…e mais ${total - itens.length}.` : '';
+  return `*${total} vídeo(s) ${rotulo}*\n\n${linhas.join('\n')}${sobra}\n\nDecida em Nichos > Revisão, no painel.`;
 }
 
 // ============================================================

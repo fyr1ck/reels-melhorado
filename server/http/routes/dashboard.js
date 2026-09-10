@@ -70,8 +70,40 @@ router.get('/', wrap(async (req, res) => {
     },
     recentErrors,
     perAccount: summaries,
+    // Campo NOVO e opcional. A tela só desenha o bloco quando `niches.ligado`
+    // é verdadeiro, então quem não usa nichos vê o Dashboard igual ao de
+    // sempre — nenhum indicador a mais ocupando espaço.
+    niches: await resumoDeNichos(),
   });
 }));
+
+/**
+ * Os números de nicho, ou `null`.
+ *
+ * Nunca derruba o Dashboard: se a consulta falhar (banco antigo, migration
+ * ainda não aplicada), devolve null e o resto da tela continua funcionando.
+ */
+async function resumoDeNichos() {
+  try {
+    const cfg = await prisma.settings.findUnique({ where: { id: 1 } });
+    if (!cfg?.nicheEnabled) return { ligado: false };
+
+    const porStatus = await prisma.contentClassification.groupBy({
+      by: ['status'], _count: { _all: true },
+    });
+
+    return {
+      ligado: true,
+      bloqueiaPublicacao: cfg.nicheBlockPublish !== false,
+      status: Object.fromEntries(porStatus.map((x) => [x.status, x._count._all])),
+      semAnalise: await prisma.video.count({
+        where: { status: { in: ['PENDING', 'SCHEDULED'] }, classification: { is: null } },
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** Confirma que a verificação de segurança foi resolvida na janela do navegador. */
 router.post('/intervention/resolve', wrap((req, res) => {

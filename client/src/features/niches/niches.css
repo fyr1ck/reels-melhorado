@@ -1,0 +1,116 @@
+/* Separação por nichos. Usa as variáveis do tema — nenhuma cor solta aqui. */
+
+.niches-toolbar {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-bottom: 14px;
+}
+
+.niches-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.niche--off { opacity: 0.55; }
+
+.niche-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+}
+.niche-head h4 { margin: 0; font-size: 14px; }
+.niche-cat { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
+
+.niche-desc { margin: 8px 0; font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+
+.niche-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+
+.niche-meta {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-size: 11.5px; color: var(--text-3);
+}
+.niche-meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+.niche-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+
+/* ---------- editor ---------- */
+
+.niche-editor { margin-bottom: 14px; }
+
+.niche-form {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.niche-form .span-2 { grid-column: 1 / -1; }
+
+.niche-form-actions {
+  display: flex; justify-content: flex-end;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+
+.niche-checks { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ---------- testador ---------- */
+
+.niche-tester { flex: 1; min-width: 300px; }
+
+.tester-out { margin-top: 12px; }
+.tester-limiares { margin: 0 0 8px; font-size: 11.5px; color: var(--text-3); }
+
+.tester-linha {
+  display: grid; grid-template-columns: 48px 130px 1fr; gap: 8px;
+  align-items: baseline; padding: 5px 0; font-size: 12px;
+  border-top: 1px solid var(--line);
+}
+.tester-linha strong { font-variant-numeric: tabular-nums; }
+.tester-linha em { color: var(--text-3); font-style: normal; font-size: 11.5px; }
+
+/* ---------- revisão ---------- */
+
+.review-filtros {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0;
+}
+
+.review-filtro {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: transparent;
+  color: var(--text-2); font-size: 12.5px; cursor: pointer;
+}
+.review-filtro:hover { border-color: var(--line-2); color: var(--text-1); }
+.review-filtro.is-on { border-color: var(--brand); color: var(--text-1); background: var(--brand-soft); }
+
+.review-lista { display: grid; gap: 10px; }
+
+.review-topo {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+}
+/* O nome do arquivo é longo e não pode empurrar o cartão para fora da tela. */
+.review-nome {
+  min-width: 0; font-size: 12.5px; line-height: 1.5; word-break: break-all;
+}
+
+.review-info { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+
+.review-motivos {
+  margin: 8px 0 0; padding-left: 16px;
+  font-size: 12px; color: var(--text-2); line-height: 1.6;
+}
+
+.review-ranking { margin-top: 8px; font-size: 12px; }
+.review-ranking summary { cursor: pointer; color: var(--text-3); }
+.review-ranking-linha {
+  display: flex; gap: 8px; padding: 3px 0; color: var(--text-2);
+}
+.review-ranking-linha strong { min-width: 42px; font-variant-numeric: tabular-nums; }
+
+.review-acoes {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.review-acoes select { max-width: 190px; }
+
+.review-dist {
+  display: flex; justify-content: space-between; padding: 5px 0;
+  font-size: 12.5px; border-top: 1px solid var(--line);
+}
+.review-dist:first-child { border-top: 0; }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListVideo, Clock, CalendarDays, Hash, FolderSync,
-  Copy,
+  Copy, Target,
   Users, Activity, HardDrive, Bot, MessageCircle, Settings as SettingsIcon, Wand2,
   PanelLeftClose, PanelLeft, Film, Check, AlertTriangle, Play,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ const NAV = [
       { to: '/biblioteca', label: 'Legendas & Hashtags', icon: Hash },
       { to: '/pastas', label: 'Pastas monitoradas', icon: FolderSync },
       { to: '/conteudo-repetido', label: 'Conteúdo repetido', icon: Copy },
+      { to: '/nichos', label: 'Nichos', title: 'Nichos — separação por assunto', icon: Target },
     ],
   },
   {

@@ -11,6 +11,7 @@ import { keepOnly, closeAll } from '../../playwright/browser.js';
 import { STORY_UNSUPPORTED_REASON } from '../publishing/story.js';
 import { moveTo } from '../../lib/files.js';
 import * as covers from '../queue/covers.js';
+import * as niches from '../niches/guard.js';
 import * as recycle from '../queue/recycle.js';
 import * as notify from '../notify.js';
 
@@ -447,6 +448,33 @@ async function run(publication) {
     await logger.error({
       action: 'ARQUIVO_SUMIU', accountId: account.id, videoName: video.filename,
       message: `${video.filepath} não existe mais. O registro foi marcado como falhado — remova-o em Fila > Falhados.`,
+    });
+    return;
+  }
+
+  // O conteúdo combina com o nicho DESTA conta?
+  //
+  // Última linha da separação por nichos. Fica aqui, e não antes de agendar,
+  // porque entre o agendamento e a publicação muita coisa muda: o vídeo pode
+  // ter sido movido de conta na tela, o nicho pode ter ganhado uma regra nova,
+  // a conta pode ter trocado de nicho.
+  //
+  // Falha SEM retentativa e SEM pausar a conta, igual ao arquivo que sumiu:
+  // insistir não muda o veredito, e não é defeito da conta. Com o recurso
+  // desligado, `validar` devolve "pode" e nada aqui muda.
+  const veredito = await niches.validar({ video, account });
+  if (!veredito.pode) {
+    await prisma.video.update({
+      where: { id: video.id },
+      data: { status: VIDEO_STATUS.FAILED, failedAt: new Date() },
+    });
+    await prisma.publication.update({
+      where: { id: publication.id },
+      data: { status: VIDEO_STATUS.FAILED, errorMessage: veredito.motivo },
+    });
+    await logger.warn({
+      action: 'NICHO_INCOMPATIVEL', accountId: account.id, videoName: video.filename,
+      message: `${veredito.motivo} Decida em Nichos > Revisão.`,
     });
     return;
   }

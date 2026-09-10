@@ -15,6 +15,8 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as covers from '../../core/queue/covers.js';
 import * as duplicates from '../../core/queue/duplicates.js';
 import * as distribute from '../../core/queue/distribute.js';
+import * as classify from '../../core/niches/classify.js';
+import * as nicheGuard from '../../core/niches/guard.js';
 import { fingerprint } from '../../lib/fingerprint.js';
 import { publishReel } from '../../core/publishing/reel.js';
 import * as accountsCore from '../../core/accounts/accounts.js';
@@ -183,6 +185,13 @@ router.post('/', upload.array('videos', 500), wrap(async (req, res) => {
 
   for (const accountId of tocadas) await regenerate({ accountId });
 
+  // Classifica DEPOIS de responder ao navegador, e sem esperar.
+  //
+  // Um lote de 300 vídeos com a IA ligada levaria minutos; segurar a resposta
+  // do upload por isso transformaria uma melhoria em travamento. O vídeo entra
+  // na fila do mesmo jeito e a classificação aparece quando ficar pronta.
+  classify.classificarEmSegundoPlano(created.map((v) => v.id));
+
   // Quanto cada conta recebeu — é o que a tela mostra depois de distribuir.
   const porConta = destinos.map((d) => ({
     accountId: d.id,
@@ -301,6 +310,21 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
     throw new ConflictError('Stories não podem ser publicados pela web do Instagram.');
   }
   accountsCore.assertConnected(video.account);
+
+  // A mesma validação de nicho do agendador. "Publicar agora" é um atalho
+  // para o mesmo destino, não uma porta dos fundos: sem isto, o botão
+  // contornaria a separação que o resto do sistema garante.
+  //
+  // `?ignorarNicho=1` existe para a tela de revisão, onde a PESSOA já olhou o
+  // vídeo e decidiu publicar mesmo assim.
+  if (req.query.ignorarNicho !== '1') {
+    const veredito = await nicheGuard.validar({ video, account: video.account });
+    if (!veredito.pode) {
+      throw new ConflictError(
+        `${veredito.motivo} Para publicar mesmo assim, use a tela Nichos > Revisão.`,
+      );
+    }
+  }
 
   const iniciadaEm = new Date();
 

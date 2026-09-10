@@ -11,6 +11,7 @@ import { fingerprint } from '../../lib/fingerprint.js';
 import * as covers from '../queue/covers.js';
 import * as duplicates from '../queue/duplicates.js';
 import * as logger from '../log.js';
+import * as classify from '../niches/classify.js';
 
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.webm', '.m4v']);
 
@@ -211,7 +212,11 @@ async function importOne(folder, file) {
       fs.unlinkSync(target);
       // Registra mesmo sem vídeo: sem isto a próxima varredura copiaria o
       // arquivo de novo, só para descartá-lo de novo.
-      await prisma.importedFile.create({
+      // A pasta de origem é uma das pistas da classificação, e ela só é conhecida
+  // aqui — por isso o gatilho fica neste ponto, e não em quem chamou.
+  classify.classificarEmSegundoPlano([video.id]);
+
+  await prisma.importedFile.create({
         data: {
           watchFolderId: folder.id,
           sourcePath: file.path,

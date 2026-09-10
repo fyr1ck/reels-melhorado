@@ -107,6 +107,23 @@ export const COMANDOS = [
     aliases: ['erros', 'erro', 'falhas', 'problemas'],
     descricao: 'últimas falhas registradas',
   },
+  // Comandos NOVOS, no fim da lista de propósito: o menu que o usuário já
+  // conhece continua com os mesmos itens na mesma ordem.
+  {
+    nome: 'nichos',
+    aliases: ['nichos', 'nicho'],
+    descricao: 'os nichos cadastrados e a conta de cada um',
+  },
+  {
+    nome: 'revisao',
+    aliases: ['revisao', 'revisão', 'em revisao', 'pendencias'],
+    descricao: 'vídeos parados esperando sua decisão',
+  },
+  {
+    nome: 'bloqueados',
+    aliases: ['bloqueados', 'bloqueado', 'barrados'],
+    descricao: 'vídeos barrados por incompatibilidade de nicho',
+  },
 ];
 
 /**

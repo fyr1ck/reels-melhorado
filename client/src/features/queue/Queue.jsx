@@ -680,9 +680,14 @@ export default function Queue() {
               </div>
 
               <div className="vid__actions">
-                {v.status === 'PENDING' && (
+                {/* Vale também para o que já tem horário marcado.
+                    Antes só aparecia em PENDING, e como a fila passa a
+                    SCHEDULED assim que a grade é montada, o botão sumia
+                    justamente dos vídeos que a pessoa vê no dia a dia —
+                    dava a impressão de que não existia. */}
+                {(v.status === 'PENDING' || v.status === 'SCHEDULED') && (
                   <Button
-                    size="sm" variant="ghost" icon={Zap} title="Publicar agora, fora do agendamento"
+                    size="sm" variant="ghost" icon={Zap} title="Postar agora, fora do agendamento"
                     loading={publicando === v.id}
                     onClick={() => publicarAgora(v)}
                   />

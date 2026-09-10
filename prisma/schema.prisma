@@ -113,6 +113,7 @@ model Account {
   publications Publication[]
   batches      Batch[]
   watchFolders WatchFolder[]
+  niches       AccountNiche[]
 
   @@index([enabled, status])
 }
@@ -169,6 +170,10 @@ model Video {
 
   publications Publication[]
   importedFrom ImportedFile?
+
+  /// A classificacao por nicho. Opcional de proposito: video que entrou antes
+  /// do recurso existir, ou com a classificacao desligada, continua valendo.
+  classification ContentClassification?
 
   @@index([accountId, status, mediaType])
   @@index([accountId, sortOrder])
@@ -483,6 +488,22 @@ model Settings {
   /// código de um app em execução pode deixá-lo sem subir.
   assistantAutoApply Boolean @default(false)
 
+  // --- separacao por nichos ---
+  /// Desligado por padrao. Ligado, cada video que entra na fila e classificado
+  /// e a publicacao passa pela validacao de compatibilidade.
+  nicheEnabled Boolean @default(false)
+  /// Nota minima para APROVADO e para REVISAO. Abaixo da segunda, BLOQUEADO.
+  /// Configuraveis porque o rigor certo depende do nicho de quem usa.
+  nicheApproveScore Int @default(90)
+  nicheReviewScore  Int @default(70)
+  /// Impedir de fato a publicacao do que ficou BLOQUEADO. Separado de
+  /// `nicheEnabled` para dar um periodo de observacao: da para classificar e
+  /// so olhar os numeros antes de deixar o sistema barrar publicacao.
+  nicheBlockPublish Boolean @default(true)
+  /// Usar a API do Claude ja configurada para refinar a classificacao. As
+  /// regras rodam sempre; a IA so entra quando ha chave e isto esta ligado.
+  nicheUseAi Boolean @default(false)
+
   autoCleanCache      Boolean   @default(false)
   autoCleanEveryHours Int       @default(24)
   lastCacheCleanAt    DateTime?
@@ -508,4 +529,116 @@ model LogEntry {
 
   @@index([createdAt])
   @@index([level, createdAt])
+}
+
+// ============================================================
+// NICHOS
+// ============================================================
+
+/// Um nicho definido PELO USUARIO.
+///
+/// Nao ha lista fixa no codigo: "Emagrecimento", "Religiao" ou "Cortes de
+/// Podcast" sao linhas desta tabela, criadas pelo painel. Adicionar um nicho
+/// novo nunca exige mexer no codigo.
+model Niche {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  category    String?
+
+  /// Listas no formato que o usuario digitou, uma por linha ou separadas por
+  /// virgula. Mesma escolha do HashtagSet.raw: normalizar so na leitura
+  /// preserva o texto exatamente como ele escreveu, e continua editavel.
+  subniches      String @default("")
+  keywords       String @default("")
+  bannedKeywords String @default("")
+  allowedThemes  String @default("")
+  bannedThemes   String @default("")
+  /// Uma regra por linha, em portugues corrente. Ex: "Nao aceitar promessas de
+  /// perda de peso rapida." Entram no prompt da IA e, quando ha palavras
+  /// reconheciveis, tambem na pontuacao por regras.
+  customRules    String @default("")
+
+  audience String?
+  tone     String?
+
+  /// Desempata quando dois nichos pontuam igual. Maior ganha.
+  priority Int @default(0)
+  /// BAIXO | MEDIO | ALTO — o quanto uma palavra proibida derruba a nota.
+  strictness String @default("MEDIO")
+  active     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts        AccountNiche[]
+  classifications ContentClassification[]
+
+  @@index([active, priority])
+}
+
+/// Liga um nicho a uma conta que JA EXISTE.
+///
+/// Tabela de ligacao em vez de campo em Account de proposito: a conta tem um
+/// nicho principal e quantos secundarios quiser, e nada do modelo Account
+/// precisou mudar para isso.
+model AccountNiche {
+  id        String  @id @default(uuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nicheId   String
+  niche     Niche   @relation(fields: [nicheId], references: [id], onDelete: Cascade)
+
+  /// Um principal por conta; o resto e secundario. Quem garante a unicidade e
+  /// a camada de nichos, nao o banco: SQLite nao tem indice parcial no Prisma.
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, nicheId])
+  @@index([nicheId])
+}
+
+/// O resultado da classificacao de UM video.
+///
+/// Fica em tabela propria, e nao em colunas de Video, porque a fila existente
+/// nao pode depender dela: sem classificacao o video continua publicando
+/// exatamente como antes.
+model ContentClassification {
+  id      String @id @default(uuid())
+  videoId String @unique
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  /// O nicho vencedor. Nulo quando nenhum alcancou nota suficiente.
+  nicheId String?
+  niche   Niche?  @relation(fields: [nicheId], references: [id], onDelete: SetNull)
+
+  /// 0 a 100.
+  score Float @default(0)
+  /// APROVADO | REVISAO | BLOQUEADO | SEM_CLASSIFICACAO
+  status String @default("SEM_CLASSIFICACAO")
+
+  /// JSON: a nota de CADA nicho, para a tela mostrar o ranking inteiro.
+  /// [{ nicheId, name, score, motivos: [...] }]
+  scores String @default("[]")
+  /// JSON: os motivos do nicho vencedor. E a explicacao que o usuario pediu —
+  /// "por que 98%" precisa ter resposta.
+  reasons String @default("[]")
+
+  /// A conta que a classificacao recomenda. Nao publica sozinha: quem decide
+  /// continua sendo a fila existente.
+  recommendedAccountId String?
+
+  /// REGRAS | IA — de onde veio a nota final.
+  source String @default("REGRAS")
+
+  /// Quando alguem decidiu manualmente na tela de revisao.
+  reviewedAt DateTime?
+  reviewNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([nicheId])
 }

@@ -1,6 +1,6 @@
 import {
   Monitor, Save, ExternalLink, Info, FileText, Copy, Bell, Send,
-  DatabaseBackup, Download, Upload, AlertTriangle,
+  DatabaseBackup, Download, Upload, AlertTriangle, Target,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '../../hooks/useQuery.js';
@@ -173,6 +173,56 @@ export default function Settings() {
         <p className="faint mt">
           A tela <Link to="/conteudo-repetido">Conteúdo repetido</Link> mostra o que já entrou
           duplicado e resolve mantendo uma cópia só.
+        </p>
+      </Card>
+
+      {/* Separação por nichos. Desligada por padrão: um recurso novo não pode
+          começar barrando publicação de quem ainda não o configurou. */}
+      <Card title="Separação por nichos" icon={Target} className="mt">
+        <Checkbox
+          label="Classificar os vídeos por nicho"
+          hint="Cada vídeo que entra na fila recebe um nicho e uma nota de compatibilidade. Sozinho, isto só informa."
+          checked={data?.nicheEnabled ?? false}
+          disabled={salvar.busy}
+          onChange={(e) => salvar.run({ nicheEnabled: e.target.checked })}
+        />
+        <Checkbox
+          label="Impedir publicação em conta de outro nicho"
+          hint="Com isto desligado dá para observar as notas por alguns dias antes de deixar o sistema barrar de fato."
+          checked={data?.nicheBlockPublish ?? true}
+          disabled={salvar.busy || !data?.nicheEnabled}
+          onChange={(e) => salvar.run({ nicheBlockPublish: e.target.checked })}
+        />
+        <Checkbox
+          label="Usar a IA para classificar"
+          hint="Reaproveita a mesma chave do Assistente. Sem chave, ou com a API fora do ar, a classificação por regras continua valendo."
+          checked={data?.nicheUseAi ?? false}
+          disabled={salvar.busy || !data?.nicheEnabled}
+          onChange={(e) => salvar.run({ nicheUseAi: e.target.checked })}
+        />
+
+        <div className="row mt">
+          <Field label="Aprovado a partir de" hint="Nota de 0 a 100.">
+            <Input
+              type="number" min={1} max={100}
+              defaultValue={data?.nicheApproveScore ?? 90}
+              disabled={salvar.busy || !data?.nicheEnabled}
+              onBlur={(e) => salvar.run({ nicheApproveScore: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Revisão a partir de" hint="Abaixo disto, bloqueado.">
+            <Input
+              type="number" min={0} max={100}
+              defaultValue={data?.nicheReviewScore ?? 70}
+              disabled={salvar.busy || !data?.nicheEnabled}
+              onBlur={(e) => salvar.run({ nicheReviewScore: Number(e.target.value) })}
+            />
+          </Field>
+        </div>
+
+        <p className="faint mt">
+          Os nichos e a revisão ficam em <Link to="/nichos">Nichos</Link>. Conta sem nicho
+          definido continua publicando tudo, como antes.
         </p>
       </Card>
 

@@ -27,6 +27,7 @@ const Library = lazy(() => import('../features/library/Library.jsx'));
 const Editor = lazy(() => import('../features/editor/Editor.jsx'));
 const Folders = lazy(() => import('../features/folders/Folders.jsx'));
 const Duplicates = lazy(() => import('../features/duplicates/Duplicates.jsx'));
+const Niches = lazy(() => import('../features/niches/Niches.jsx'));
 const Accounts = lazy(() => import('../features/accounts/Accounts.jsx'));
 const Activity = lazy(() => import('../features/activity/Activity.jsx'));
 const Storage = lazy(() => import('../features/storage/Storage.jsx'));
@@ -56,6 +57,7 @@ export default function App() {
                   <Route path="/biblioteca" element={<Library />} />
                   <Route path="/pastas" element={<Folders />} />
                   <Route path="/conteudo-repetido" element={<Duplicates />} />
+                  <Route path="/nichos" element={<Niches />} />
                   <Route path="/contas" element={<Accounts />} />
                   <Route path="/atividade" element={<Activity />} />
                   <Route path="/armazenamento" element={<Storage />} />

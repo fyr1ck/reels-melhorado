@@ -15,6 +15,7 @@ import settings from './http/routes/settings.js';
 import assistantRoutes from './http/routes/assistant.js';
 import whatsappRoutes from './http/routes/whatsapp.js';
 import editor from './http/routes/editor.js';
+import nichesRoutes from './http/routes/niches.js';
 
 /**
  * Monta o app Express. Separado do bootstrap (index.js) de propósito: assim
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api/assistant', assistantRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
   app.use('/api/editor', editor);
+  app.use('/api/niches', nichesRoutes);
 
   app.use('/api/covers', express.static(config.paths.covers));
 
