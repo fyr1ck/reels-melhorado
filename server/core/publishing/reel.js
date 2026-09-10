@@ -861,16 +861,32 @@ export async function publishReel({
       return { ok: true, durationMs: Date.now() - start };
     }
 
+    // Nada confirmou dentro do prazo. O "Compartilhar" JÁ FOI CLICADO aqui, e
+    // é a situação mais perigosa que existe neste arquivo: dar isso como falha
+    // agenda uma nova tentativa, e se o reel tiver ido ao ar o perfil termina
+    // com o vídeo publicado duas vezes.
+    //
+    // Por isso a última palavra é do perfil, não do relógio. O Instagram às
+    // vezes leva mais que 90s para processar um vídeo grande, e o preço de
+    // esperar mais é uma publicação lenta — contra um post duplicado.
+    if (username && await conferirNoPerfil(context, username, videoName, start)) {
+      await logEvent({
+        video: videoName, action: 'CONFIRMADO_TARDE', status: 'WARNING',
+        message: 'O sinal de sucesso não apareceu em 90s, mas o reel está no perfil. '
+          + 'Publicado — e sem nova tentativa, que duplicaria o post.',
+      });
+      return { ok: true, durationMs: Date.now() - start };
+    }
+
     // Diz o que ESTAVA na tela quando desistiu. Sem isso, "não confirmei" não
-    // distingue "falhou" de "deu certo e eu não soube reconhecer" — e a segunda
-    // hipótese leva a republicar um reel que já está no ar.
+    // distingue "falhou" de "deu certo e eu não soube reconhecer".
     const naTela = await page.evaluate(
       () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
     ).catch(() => '(não foi possível ler)');
 
     throw new Error(
-      'Não consegui confirmar a publicação em 90s. O reel PODE ter ido ao ar — confira o perfil '
-      + `antes de tentar de novo. A tela mostrava: "${naTela}"`,
+      'Não consegui confirmar a publicação em 90s e o reel não apareceu no perfil. '
+      + `A tela mostrava: "${naTela}"`,
     );
   } finally {
     // Fecha a aba, não o contexto: a sessão segue viva para a próxima
