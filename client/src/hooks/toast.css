@@ -20,17 +20,29 @@
   box-shadow: var(--sh-3);
   font-size: 13px;
   line-height: 1.5;
-  animation: fade-in 0.18s var(--ease);
+  /* Entra pela direita, de onde ele mora: aparecer no lugar não diz de onde
+     veio, e deslizar da borda faz o olho encontrar o aviso sem procurar. */
+  animation: toast-in 0.26s var(--ease-out);
 }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
 .toast > svg { flex-shrink: 0; margin-top: 1px; }
 .toast > span { flex: 1; min-width: 0; word-break: break-word; }
 .toast > button { color: var(--text-3); display: flex; padding: 2px; }
 .toast > button:hover { color: var(--text); }
 
-.toast--success { border-color: rgba(52, 211, 153, 0.35); }
+/* Fio da cor do estado na lateral esquerda. O ícone já diz o que houve; a
+   faixa faz o tipo do aviso ser lido antes mesmo da leitura do texto. */
+.toast { border-left-width: 3px; }
+.toast--success { border-color: rgba(52, 211, 153, 0.35); border-left-color: var(--ok); }
 .toast--success > svg { color: var(--ok); }
-.toast--error { border-color: rgba(247, 95, 109, 0.35); }
+.toast--error { border-color: rgba(247, 95, 109, 0.35); border-left-color: var(--danger); }
 .toast--error > svg { color: var(--danger); }
-.toast--warn { border-color: rgba(245, 185, 66, 0.35); }
+.toast--warn { border-color: rgba(245, 185, 66, 0.35); border-left-color: var(--warn); }
 .toast--warn > svg { color: var(--warn); }
+.toast--info { border-left-color: var(--brand); }
 .toast--info > svg { color: var(--text-2); }

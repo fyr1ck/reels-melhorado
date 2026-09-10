@@ -30,7 +30,30 @@
 }
 .vid__cap.is-empty { color: var(--text-3); font-style: italic; }
 .vid__edit { margin-top: 9px; display: flex; flex-direction: column; gap: 9px; }
-.vid__actions { display: flex; gap: 4px; flex-shrink: 0; }
+.vid__actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* "Postar agora" com rótulo, e não só ícone.
+   Ele era um raio sozinho no meio de outros três ícones, e ninguém adivinha
+   que aquele significa "publica isto agora". Ação de consequência imediata e
+   irreversível precisa dizer o próprio nome. */
+.vid__now { flex-shrink: 0; }
+
+/* Nas larguras menores o rótulo sai e sobra o ícone: caber é mais importante
+   que explicar quando não há espaço para as duas coisas. */
+@media (max-width: 720px) {
+  .vid__now span:last-child { display: none; }
+  .vid__now { padding: 6px; }
+}
+
+/* Faixa de estado na lateral do cartão.
+   Uma cor por estado, lida antes do texto. Só pinta a borda — o status
+   continua sendo o que o backend devolve, e nada aqui muda essa lógica. */
+.vid { border-left: 2px solid transparent; transition: border-color 0.15s var(--ease); }
+.vid--PENDING { border-left-color: var(--line-strong); }
+.vid--SCHEDULED { border-left-color: var(--brand); }
+.vid--PUBLISHING { border-left-color: var(--warn); }
+.vid--PUBLISHED { border-left-color: var(--ok); }
+.vid--FAILED { border-left-color: var(--danger); }
 
 .qbar {
   display: flex; align-items: center; gap: 10px;

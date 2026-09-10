@@ -131,7 +131,7 @@ export default function Dashboard() {
         </div>
       </Card>
 
-      <div className="grid grid--4 mt">
+      <div className="grid grid--4 mt anim-stagger">
         <Metric icon={Film} label="Na fila" value={videos.queued}
                 hint={`${videos.pending} pendentes · ${videos.scheduled} agendados`} />
         <Metric icon={CheckCircle2} label="Publicados" value={videos.published}

@@ -49,6 +49,39 @@
   --nav-w-min: 68px;
   --top-h: 56px;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Curva com leve overshoot, para o que ENTRA na tela. Movimento que
+     desacelera até parar seco parece travado; um respiro no fim é o que
+     separa "aparecer" de "chegar". */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Elevação de hover: mais difusa e um pouco tingida de roxo, para o card
+     levantado parecer iluminado pela cor da marca em vez de só escuro. */
+  --sh-hover:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(124, 92, 255, 0.09);
+
+  /* Brilho de topo para superfícies grandes: um gradiente quase imperceptível
+     que evita o bloco chapado. */
+  --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.028) 0%, transparent 42%);
+
+  /* ---- APELIDOS ----
+     Os mesmos valores acima com os nomes genéricos de um design system. Existem
+     para quem chega ao projeto procurando `--bg-card` ou `--accent` não precisar
+     descobrir que aqui se chamam `--surface-2` e `--brand`. São aliases: mudar
+     o token original muda os dois, e nada precisou ser renomeado. */
+  --bg-primary: var(--bg);
+  --bg-secondary: var(--surface-1);
+  --bg-card: var(--surface-2);
+  --border-color: var(--line);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --success: var(--ok);
+  --warning: var(--warn);
+  --radius: var(--r);
+  --shadow: var(--sh-2);
 }
 
 /* ============================================================
@@ -99,7 +132,35 @@ code, pre { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monos
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes shimmer { 100% { transform: translateX(100%); } }
 
+/* Entrada: sobe 10px e cresce 1%. O scale é quase invisível de propósito —
+   ele dá a sensação de "chegando", e sem ele o movimento parece um empurrão. */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+
 .spin { animation: spin 0.9s linear infinite; }
+
+/* ============================================================
+   ENTRADA DE CONTEÚDO
+   ============================================================
+   Aplicada no conteúdo da página, não em cada componente: um card que anima
+   toda vez que a lista recarrega vira pisca-pisca. Aqui a animação acontece na
+   troca de tela, que é quando ela informa alguma coisa.
+
+   `backwards` importa: sem ele o elemento pisca no estado final antes do
+   atraso começar. */
+.anim-in { animation: fade-up 0.34s var(--ease-out) backwards; }
+
+/* Escalonamento curto: o olho lê como uma onda só, não como itens separados.
+   Para em 6 porque além disso a espera passa a ser percebida como lentidão. */
+.anim-stagger > * { animation: fade-up 0.34s var(--ease-out) backwards; }
+.anim-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.anim-stagger > *:nth-child(2) { animation-delay: 0.05s; }
+.anim-stagger > *:nth-child(3) { animation-delay: 0.08s; }
+.anim-stagger > *:nth-child(4) { animation-delay: 0.11s; }
+.anim-stagger > *:nth-child(5) { animation-delay: 0.14s; }
+.anim-stagger > *:nth-child(n + 6) { animation-delay: 0.16s; }
 
 /* Respeita quem pediu menos movimento no sistema. */
 @media (prefers-reduced-motion: reduce) {

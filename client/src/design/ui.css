@@ -24,13 +24,34 @@
 .ui-btn--lg { padding: 11px 20px; font-size: 14px; border-radius: var(--r); }
 .ui-btn--icon { padding: 7px; }
 
-.ui-btn:hover:not(:disabled) { background: #232838; border-color: #394052; }
+.ui-btn:hover:not(:disabled) {
+  background: #232838;
+  border-color: #394052;
+  box-shadow: var(--sh-2), var(--sheen);
+}
 /* Deslocamento de 1px no clique: retorno tátil sem animação longa. */
 .ui-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--sh-1); }
 .ui-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.ui-btn--primary { background: var(--brand-grad); border-color: transparent; color: #fff; }
-.ui-btn--primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--brand-grad); border-color: transparent; }
+/* O primário ganha um halo da própria cor, e não só uma sombra preta: é o que
+   faz o botão principal parecer aceso em vez de apenas mais claro. */
+.ui-btn--primary {
+  background: var(--brand-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(124, 92, 255, 0.28), var(--sheen);
+}
+.ui-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.09);
+  background: var(--brand-grad);
+  border-color: transparent;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(124, 92, 255, 0.4), var(--sheen);
+}
+.ui-btn--primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
 
 .ui-btn--danger { background: var(--danger-soft); color: var(--danger); border-color: rgba(247, 95, 109, 0.28); }
 .ui-btn--danger:hover:not(:disabled) { background: rgba(247, 95, 109, 0.2); border-color: rgba(247, 95, 109, 0.45); }
@@ -46,11 +67,26 @@
    ============================================================ */
 
 .ui-card {
+  position: relative;
   background: var(--surface-2);
+  background-image: var(--glass);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 18px 20px;
   box-shadow: var(--sh-1), var(--sheen);
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease),
+              transform 0.18s var(--ease);
+}
+
+/* O hover é OPCIONAL, por classe.
+   Cartão que levanta ao passar o mouse comunica "clicável". Aplicar isso em
+   todo card faria a tela inteira reagir a um movimento acidental do mouse e
+   prometer interação onde não existe nenhuma. Quem é item de lista pede
+   `.ui-card--interactive`; quem é painel de conteúdo fica quieto. */
+.ui-card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: var(--sh-hover), var(--sheen);
 }
 
 .ui-card--danger { border-color: rgba(247, 95, 109, 0.35); }
@@ -99,19 +135,61 @@
 .ui-badge--brand { background: var(--brand-soft); color: #c4b5ff; border-color: rgba(124, 92, 255, 0.25); }
 .ui-badge--muted { background: rgba(255, 255, 255, 0.05); color: var(--text-2); border-color: var(--line); }
 
+/* Ponto de status desenhado em CSS.
+   Cor sozinha não é acessível — quem não distingue verde de vermelho fica sem
+   informação. O ponto vem SEMPRE acompanhado do texto do estado; ele acelera a
+   leitura de quem enxerga a cor sem ser a única pista para quem não enxerga. */
+.ui-badge--dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* Pulsação só no estado "acontecendo agora". Um ponto piscando em algo parado
+   seria ansiedade sem informação. */
+.ui-badge--live::before { animation: pulse-soft 1.8s ease-in-out infinite; }
+
 /* ============================================================
    MÉTRICA
    ============================================================ */
 
 .ui-metric {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
   background: var(--surface-2);
+  background-image: var(--glass);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 16px 18px;
   box-shadow: var(--sh-1), var(--sheen);
+  overflow: hidden;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease),
+              transform 0.18s var(--ease);
+}
+
+/* Fio de luz no topo, na cor do estado. Some quando não há tom definido, então
+   o cartão neutro continua neutro. */
+.ui-metric::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--metric-accent, transparent) 50%, transparent);
+}
+.ui-metric--ok { --metric-accent: rgba(52, 211, 153, 0.5); }
+.ui-metric--warn { --metric-accent: rgba(245, 185, 66, 0.5); }
+.ui-metric--danger { --metric-accent: rgba(247, 95, 109, 0.5); }
+
+.ui-metric:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: var(--sh-hover), var(--sheen);
 }
 
 .ui-metric__label {
@@ -161,10 +239,21 @@
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .ui-input::placeholder { color: var(--text-3); }
+.ui-input:hover:not(:disabled):not(:focus) { border-color: var(--line-strong); }
 .ui-input:focus {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.ui-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--surface-1);
+}
+/* Estado de erro: a borda muda junto com a mensagem que o campo já mostra. */
+.ui-input[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(247, 95, 109, 0.18);
 }
 
 .ui-textarea { resize: vertical; line-height: 1.6; min-height: 80px; }
@@ -245,6 +334,15 @@
   gap: 10px;
   padding: 44px 24px;
   text-align: center;
+}
+/* O ícone do estado vazio ganha um halo da cor da marca. A tela sem conteúdo
+   é onde o produto mais parece inacabado; um ponto de cor ali muda a leitura
+   de "quebrou" para "ainda não tem nada". */
+.ui-empty__icon {
+  background: radial-gradient(circle at 50% 40%, rgba(124, 92, 255, 0.16), var(--surface-3) 70%) !important;
+  border: 1px solid rgba(124, 92, 255, 0.16);
+  color: var(--brand-hover) !important;
+  box-shadow: 0 6px 22px rgba(124, 92, 255, 0.14);
 }
 .ui-empty__icon {
   display: flex;

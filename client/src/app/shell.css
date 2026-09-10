@@ -114,8 +114,19 @@
   transition: background 0.14s var(--ease), color 0.14s var(--ease);
 }
 .nav__item svg { flex-shrink: 0; }
+/* O ícone clareia junto com o texto: sem isso ele fica apagado e o item
+   parece meio desligado mesmo com o mouse em cima. */
+.nav__item svg { color: var(--text-3); transition: color 0.14s var(--ease); }
 .nav__item:hover { background: var(--surface-3); color: var(--text); }
-.nav__item.is-active { background: var(--brand-soft); color: #c9bcff; font-weight: 600; box-shadow: var(--sheen); }
+.nav__item:hover svg { color: var(--text-2); }
+
+.nav__item.is-active {
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.19) 0%, rgba(124, 92, 255, 0.05) 100%);
+  color: #cfc3ff;
+  font-weight: 600;
+  box-shadow: var(--sheen);
+}
+.nav__item.is-active svg { color: var(--brand-hover); }
 /* Marcador colado na borda: `left` acompanha o padding do menu recolhido. */
 .nav__item.is-active::before {
   content: '';
@@ -127,6 +138,9 @@
   height: 17px;
   border-radius: 0 3px 3px 0;
   background: var(--brand-grad);
+  /* Um brilho curto ao redor do marcador. É o detalhe que faz a barra parecer
+     acesa e não apenas pintada. */
+  box-shadow: 0 0 10px rgba(124, 92, 255, 0.55);
 }
 .shell.is-collapsed .nav__item { justify-content: center; padding: 9px; }
 .shell.is-collapsed .nav__item.is-active::before { left: -10px; }
@@ -161,6 +175,17 @@
   z-index: 30;
 }
 .top h1 { font-size: 15.5px; font-weight: 650; letter-spacing: -0.01em; }
+/* Fio de luz sob a barra de topo: separa o cabeçalho do conteúdo sem
+   acrescentar mais uma linha dura à tela. */
+.top::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.22) 30%, rgba(124, 92, 255, 0.22) 70%, transparent);
+  pointer-events: none;
+}
+.top { position: sticky; }
 .top__spacer { flex: 1; }
 
 .top__conn {
@@ -243,3 +268,18 @@
   border-color: rgba(52, 211, 153, 0.22);
 }
 @media (max-width: 900px) { .top__ativas { display: none; } }
+
+/* Telas bem estreitas.
+   A regra de 900px já recolhe o menu para ícones; abaixo de 560px o problema
+   passa a ser o que sobra de largura para o conteúdo. Aqui só apertam
+   espaçamentos — nenhum item some, nenhuma ação fica inacessível no celular. */
+@media (max-width: 560px) {
+  .nav { width: 56px; padding: 12px 6px; }
+  .nav__item { padding: 9px 6px; }
+  .page { padding: 16px 12px 40px; }
+  .top { padding: 0 12px; gap: 8px; }
+  .top h1 { font-size: 14px; }
+  .ui-card { padding: 14px 15px; }
+  /* O botão de largura total evita alvo de toque espremido no canto. */
+  .page-head--row > .ui-btn { width: 100%; }
+}

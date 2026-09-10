@@ -606,7 +606,10 @@ export default function Queue() {
           {lista.map((v, i) => (
             <Card
               key={v.id}
-              className={`vid${arrastando === i ? ' is-arrastando' : ''}`}
+              // `vid--STATUS` pinta a faixa lateral com a cor do estado. O
+              // valor vem do backend sem tradução: a classe é só a leitura
+              // visual dele, não uma segunda fonte de verdade.
+              className={`vid vid--${v.status} ui-card--interactive${arrastando === i ? ' is-arrastando' : ''}`}
               // Só arrasta o que ainda não foi publicado e sem busca ativa:
               // reordenar um subconjunto filtrado produziria uma ordem que não
               // corresponde ao que está na tela.
@@ -687,10 +690,13 @@ export default function Queue() {
                     dava a impressão de que não existia. */}
                 {(v.status === 'PENDING' || v.status === 'SCHEDULED') && (
                   <Button
-                    size="sm" variant="ghost" icon={Zap} title="Postar agora, fora do agendamento"
+                    size="sm" variant="ok" icon={Zap} title="Publica imediatamente, fora do agendamento"
+                    className="vid__now"
                     loading={publicando === v.id}
                     onClick={() => publicarAgora(v)}
-                  />
+                  >
+                    Postar agora
+                  </Button>
                 )}
                 {editando !== v.id && (
                   <Button

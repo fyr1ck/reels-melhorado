@@ -163,7 +163,11 @@ export default function Shell({ children }) {
           )}
         </header>
 
-        <main className="page">{children}</main>
+        {/* `key` na rota faz a animação de entrada rodar A CADA troca de tela.
+            Sem ele o React reaproveita o mesmo <main>, a animação toca uma vez
+            só no primeiro carregamento e a navegação volta a ser um corte
+            seco. Só o wrapper anima — o conteúdo não é remontado. */}
+        <main className="page anim-in" key={location.pathname}>{children}</main>
       </div>
     </div>
   );

@@ -2,8 +2,10 @@
   position: fixed;
   inset: 0;
   z-index: 150;
-  background: rgba(5, 6, 10, 0.72);
-  backdrop-filter: blur(3px);
+  background: rgba(5, 6, 10, 0.66);
+  /* Blur maior joga o app para trás do diálogo em vez de só escurecê-lo. É o
+     que faz a decisão parecer a única coisa na tela. */
+  backdrop-filter: blur(8px) saturate(120%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,14 +13,23 @@
   animation: fade-in 0.15s var(--ease);
 }
 
+/* Entra crescendo a partir de 96%: o diálogo "vem para a frente" em vez de
+   simplesmente aparecer. Curva com overshoot para o movimento não morrer seco. */
+@keyframes cf-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
 .cf-box {
   width: 100%;
   max-width: 460px;
   background: var(--surface-2);
+  background-image: var(--glass);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   padding: 22px;
   box-shadow: var(--sh-3);
+  animation: cf-in 0.22s var(--ease-out);
 }
 .cf-box h3 { font-size: 15px; font-weight: 650; margin-bottom: 8px; }
 .cf-box p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
