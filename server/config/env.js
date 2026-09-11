@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,6 +10,17 @@ import { fileURLToPath } from 'url';
  * escrever — uma raiz errada abriria o disco inteiro.
  */
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+/**
+ * O .env vem da RAIZ, não do diretório de onde o comando foi chamado.
+ *
+ * `import 'dotenv/config'` procura em `process.cwd()`. Iniciar o servidor de
+ * dentro de outra pasta fazia o arquivo não ser encontrado — e o efeito era
+ * invisível: nenhum erro, só os padrões silenciosamente no lugar da
+ * configuração. O sintoma real foi a API subir numa porta diferente da que o
+ * proxy do front procura, com o painel abrindo e nenhuma chamada respondendo.
+ */
+dotenv.config({ path: path.join(RAIZ, '.env') });
 
 /**
  * Configuração num lugar só, lida uma vez na subida.
@@ -29,7 +40,15 @@ function num(name, fallback, { min = 1 } = {}) {
   return Math.round(n);
 }
 
-const VIDEOS_DIR = path.resolve(process.env.VIDEOS_DIR || './videos');
+/**
+ * Caminho relativo conta a partir da RAIZ, não do cwd.
+ *
+ * Mesmo motivo do .env: `path.resolve('./videos')` dava uma pasta diferente
+ * conforme de onde o processo tivesse sido iniciado, e o app passaria a
+ * procurar os vídeos num lugar onde eles não estão. Caminho absoluto no .env
+ * continua valendo como está.
+ */
+const VIDEOS_DIR = path.resolve(RAIZ, process.env.VIDEOS_DIR || './videos');
 
 export const config = {
   raiz: RAIZ,
