@@ -412,6 +412,24 @@ async function tick() {
 async function run(publication) {
   const { video, account } = publication;
 
+  // O vídeo já foi ao ar por outro caminho?
+  //
+  // Um agendamento pode sobreviver ao vídeo: "Publicar agora" num vídeo que já
+  // tinha horário deixava esse horário de pé. Sem esta checagem o agendador
+  // publicaria o mesmo reel pela segunda vez quando o horário chegasse.
+  //
+  // Fica AQUI, e não só na correção do "Publicar agora", porque este é o único
+  // ponto por onde toda publicação agendada passa. Qualquer outro caminho que
+  // um dia deixe um agendamento órfão para trás é barrado do mesmo jeito.
+  if (video.status === VIDEO_STATUS.PUBLISHED) {
+    await prisma.publication.delete({ where: { id: publication.id } }).catch(() => {});
+    await logger.warn({
+      action: 'AGENDAMENTO_ORFAO_DESCARTADO', accountId: account.id, videoName: video.filename,
+      message: 'O vídeo já tinha sido publicado; o horário que sobrou foi descartado em vez de publicar de novo.',
+    });
+    return;
+  }
+
   if (video.mediaType === MEDIA.STORY) {
     // Defesa em profundidade: bySlots já não agenda stories, mas um registro
     // antigo não pode consumir 3 tentativas e destruir o arquivo.

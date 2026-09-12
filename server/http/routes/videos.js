@@ -424,6 +424,17 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
       },
     });
 
+    // Cancela o horário que o vídeo já tinha na grade.
+    //
+    // Publicar agora um vídeo AGENDADO deixava o agendamento antigo de pé,
+    // apontando para um vídeo já publicado. Quando o horário chegava, o
+    // agendador o pegava e publicava o mesmo reel de novo. Em 11/09 ficaram 42
+    // desses — o botão passou a aparecer em vídeos agendados e cada clique
+    // deixava um para trás.
+    await prisma.publication.deleteMany({
+      where: { videoId: video.id, status: VIDEO_STATUS.SCHEDULED },
+    });
+
     await logger.success({
       action: 'PUBLICACAO_MANUAL_OK', accountId: video.accountId,
       videoName: video.filename, durationMs: result.durationMs,
