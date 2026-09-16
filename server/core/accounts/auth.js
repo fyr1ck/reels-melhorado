@@ -6,6 +6,7 @@ import { sessionDir, sessionFile } from './accounts.js';
 import { closeContext } from '../../playwright/browser.js';
 import { AppError } from '../../lib/errors.js';
 import * as logger from '../log.js';
+import * as comum from './navegadorComum.js';
 
 /**
  * Login manual no Instagram.
@@ -43,7 +44,7 @@ const rascunhoDe = (accountId) => path.join(sessionDir(accountId), 'login-rascun
 
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function connect(account) {
+async function connectAutomatizado(account) {
   fs.mkdirSync(sessionDir(account.id), { recursive: true });
 
   // Fecha só a janela DESTA conta.
@@ -152,4 +153,133 @@ export async function connect(account) {
   });
 
   return updated;
+}
+
+/**
+ * Prazo para a pessoa terminar o login no navegador comum.
+ *
+ * Maior que o da janela automatizada: aqui não há como saber o que está
+ * acontecendo dentro da janela, só quando ela fecha. Verificação por código de
+ * e-mail pode levar tempo, e fechar a espera cedo demais descartaria um login
+ * que estava para terminar.
+ */
+const PRAZO_COMUM_MS = 30 * 60_000;
+
+/**
+ * Login pelo navegador comum, sem automação.
+ *
+ * Três etapas, e só a terceira envolve o Playwright:
+ *
+ * 1. abre o Edge/Chrome instalado, num perfil só desta conta;
+ * 2. espera a pessoa FECHAR a janela — é o sinal de "terminei";
+ * 3. com o navegador já encerrado, abre o mesmo perfil sem janela e copia os
+ *    cookies do Instagram para o arquivo de sessão que a publicação usa.
+ *
+ * O perfil fica guardado. Numa reconexão, o Instagram reconhece o mesmo
+ * dispositivo, e a chance de pedir verificação de novo cai.
+ */
+async function connectPeloNavegador(account, executavel) {
+  const perfil = path.join(sessionDir(account.id), 'navegador');
+
+  if (comum.processosDoPerfil(account.id) > 0) {
+    throw new AppError(
+      `A janela de login de @${account.username} já está aberta. Termine nela e feche-a.`,
+      409, 'LOGIN_JA_ABERTO',
+    );
+  }
+
+  await logger.info({
+    action: 'LOGIN_INICIADO', accountId: account.id,
+    message: `Aguardando login de @${account.username} no navegador comum (${path.basename(executavel)}).`,
+  });
+
+  comum.abrir(executavel, perfil, 'https://www.instagram.com/accounts/login/');
+
+  // Primeiro confirma que a janela ABRIU.
+  //
+  // Sem isto, um navegador que não sobe seria lido como "a pessoa fechou a
+  // janela", e a mensagem diria para ela esperar o feed antes de fechar — uma
+  // janela que ela nunca viu.
+  let abriu = false;
+  for (let i = 0; i < 15 && !abriu; i++) {
+    await esperar(2000);
+    abriu = comum.processosDoPerfil(account.id) > 0;
+  }
+  if (!abriu) {
+    throw new AppError(
+      `Não consegui abrir o navegador (${path.basename(executavel)}). Se ele estiver em outro lugar, `
+      + 'coloque o caminho em NAVEGADOR_LOGIN no arquivo .env.',
+      500, 'NAVEGADOR_NAO_ABRIU',
+    );
+  }
+
+  // Depois espera FECHAR. `!== 0` e não `> 0`: -1 é "não sei", e na dúvida
+  // continua esperando em vez de ler um perfil que pode estar em uso.
+  const deadline = Date.now() + PRAZO_COMUM_MS;
+  while (Date.now() < deadline && comum.processosDoPerfil(account.id) !== 0) {
+    await esperar(2000);
+  }
+
+  if (comum.processosDoPerfil(account.id) !== 0) {
+    throw new AppError(
+      'A janela de login ficou aberta por 30 minutos. Termine o login, feche a janela e conecte de novo.',
+      408, 'LOGIN_TIMEOUT',
+    );
+  }
+
+  // Folga para o sistema liberar os arquivos do perfil depois que o último
+  // processo sai. Ler cedo demais esbarrava no perfil ainda travado.
+  await esperar(2000);
+
+  const leitor = await chromium.launchPersistentContext(perfil, {
+    executablePath: executavel,
+    headless: true,
+  });
+
+  let cookies;
+  try {
+    cookies = comum.cookiesDoInstagram(await leitor.cookies());
+  } finally {
+    await leitor.close().catch(() => {});
+  }
+
+  if (!cookies.some((c) => c.name === 'sessionid')) {
+    throw new AppError(
+      'A janela foi fechada antes de o login terminar. Conecte de novo e só feche a janela '
+      + 'depois de ver o seu feed do Instagram.',
+      400, 'LOGIN_INCOMPLETO',
+    );
+  }
+
+  // Mesmo formato que a publicação sempre leu. Só cookies: o localStorage de
+  // uma janela que já não existe não há como recuperar, e a autenticação do
+  // Instagram mora nos cookies.
+  fs.writeFileSync(sessionFile(account.id), JSON.stringify({ cookies, origins: [] }, null, 2));
+  fs.rmSync(rascunhoDe(account.id), { force: true });
+
+  const updated = await prisma.account.update({
+    where: { id: account.id },
+    data: { connected: true, lastConnectedAt: new Date() },
+  });
+
+  await logger.success({
+    action: 'LOGIN_CONCLUIDO', accountId: account.id,
+    message: `Sessão de @${account.username} salva pelo navegador comum.`,
+  });
+
+  return updated;
+}
+
+/**
+ * Conecta uma conta.
+ *
+ * Por padrão usa o navegador comum, quando há um instalado: é o único jeito de
+ * o reCAPTCHA do Instagram aceitar o login. A janela automatizada fica como
+ * alternativa (`modo: 'AUTOMATIZADO'`) e como caminho para máquinas sem Edge
+ * nem Chrome.
+ */
+export async function connect(account, { modo } = {}) {
+  const executavel = modo === 'AUTOMATIZADO' ? null : comum.localizar();
+  if (executavel) return connectPeloNavegador(account, executavel);
+  return connectAutomatizado(account);
 }

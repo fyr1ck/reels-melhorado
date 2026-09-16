@@ -45,16 +45,20 @@ export default function Accounts() {
   async function conectar(conta) {
     const ok = await confirm({
       title: `Conectar @${conta.username}`,
+      // O passo que decide tudo é FECHAR a janela: é o único sinal que o app
+      // recebe de que o login terminou, porque ele não controla aquela janela.
+      // Fechar cedo demais é o erro mais provável, por isso a frase repete.
       description:
-        'Uma janela real do Chromium vai abrir. Faça o login você mesmo, incluindo 2FA ou ' +
-        'verificação, até ver o feed normal. O app nunca vê nem guarda sua senha — só os ' +
-        'cookies da sessão.',
+        'Vai abrir uma janela do seu navegador comum (Brave, Chrome ou Edge), sem automação — '
+        + 'é por isso que o reCAPTCHA passa. Faça o login você mesmo, incluindo 2FA ou verificação, '
+        + 'até ver o seu feed. Só então FECHE a janela: é assim que o app sabe que terminou. '
+        + 'O app nunca vê nem guarda sua senha — só os cookies da sessão.',
       confirmLabel: 'Abrir navegador',
     });
     if (!ok) return;
 
     setBusyId(conta.id);
-    toast.info('Navegador abrindo. Conclua o login na janela.');
+    toast.info('Faça o login na janela e feche-a quando vir o feed.');
     try {
       await api.post(`/accounts/${conta.id}/connect`);
       await reload();

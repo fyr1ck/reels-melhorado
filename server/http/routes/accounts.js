@@ -253,7 +253,9 @@ router.post('/:id/default', wrap(async (req, res) => {
  */
 router.post('/:id/connect', wrap(async (req, res) => {
   const account = await accounts.requireAccount(req.params.id);
-  res.json(await auth.connect(account));
+  // `modo: 'AUTOMATIZADO'` força a janela antiga do Playwright, para máquinas
+  // sem Brave, Chrome ou Edge. Sem corpo, usa o navegador comum.
+  res.json(await auth.connect(account, { modo: req.body?.modo }));
 }));
 
 router.post('/:id/disconnect', wrap(async (req, res) => {
