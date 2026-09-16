@@ -185,8 +185,18 @@ export default function Accounts() {
                 </Button>
               ) : (
                 <Button size="sm" variant="primary" icon={Plug} loading={busyId === a.id} onClick={() => conectar(a)}>
-                  Conectar
+                  {busyId === a.id ? 'Aguardando você fechar a janela' : 'Conectar'}
                 </Button>
+              )}
+              {/* Sem esta linha o botão só girava. O login tinha dado certo na
+                  janela do navegador, mas nada dizia que o app estava parado
+                  esperando essa janela FECHAR — e a pessoa via a conta como
+                  desconectada com o Instagram já aberto na frente dela. */}
+              {busyId === a.id && (
+                <p className="faint" style={{ width: '100%', marginTop: 6 }}>
+                  Terminou o login e está vendo o feed? Feche a janela do navegador que abriu —
+                  só aí o painel conclui a conexão.
+                </p>
               )}
 
               {a.status === 'ACTIVE' ? (
@@ -250,7 +260,7 @@ export default function Accounts() {
 
       <Card title="Como funciona" icon={Info} className="mt">
         <ul className="acc-help">
-          <li><Plug size={13} /> <b>Conectar</b> abre o Chromium para você logar. A senha nunca passa pelo app.</li>
+          <li><Plug size={13} /> <b>Conectar</b> abre o seu navegador (Brave, Chrome ou Edge) para você logar. Quando vir o feed, <b>feche a janela</b> — é o sinal de que terminou. A senha nunca passa pelo app.</li>
           <li><Play size={13} /> <b>Ativar</b> só é aceito depois de conectar — ativar sem sessão geraria falha em loop.</li>
           <li><Shuffle size={13} /> <b>Ordem aleatória</b> sorteia o próximo vídeo em vez de seguir a fila.</li>
           <li><Power size={13} /> <b>Desligada</b> tira a conta do agendador sem apagar sessão nem fila.</li>
