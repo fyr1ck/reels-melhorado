@@ -78,6 +78,25 @@ export function validatePath(input) {
 }
 
 /**
+ * O arquivo já parou de ser escrito?
+ *
+ * A espera existe para o sincronizador de nuvem, que cria o arquivo com o
+ * tamanho final antes de terminar de baixá-lo. Só que ela media IDADE
+ * (`agora - mtime`), e mtime no FUTURO dá idade negativa — sempre menor que a
+ * espera, sempre "ainda sendo gravado".
+ *
+ * Isso não é hipótese: baixador que carimba a hora em UTC deixa todo arquivo
+ * 3h à frente no fuso de Brasília, e a pasta inteira some da varredura para
+ * sempre, sem erro nenhum no painel. Carimbo no futuro é relógio errado, não
+ * download em andamento — e um arquivo pela metade que escape aqui morre no
+ * ffprobe da importação e volta na varredura seguinte.
+ */
+export function estaParado(mtimeMs, now, settleMs) {
+  const parado = now - mtimeMs;
+  return parado < 0 || parado >= settleMs;
+}
+
+/**
  * Lista os vídeos elegíveis. Sem recursão — subpasta fica de fora para o
  * comportamento ser previsível.
  */
@@ -99,7 +118,7 @@ function candidates(folderPath) {
     }
 
     if (stat.size === 0) continue;
-    if (now - stat.mtimeMs < config.watchSettleMs) continue; // ainda sendo gravado
+    if (!estaParado(stat.mtimeMs, now, config.watchSettleMs)) continue; // ainda sendo gravado
 
     // Trunca para milissegundo inteiro: guardado como REAL, a fração se perde
     // no round-trip do SQLite e a comparação da chave de dedup falha.
