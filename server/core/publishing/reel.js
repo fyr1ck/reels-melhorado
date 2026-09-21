@@ -581,6 +581,25 @@ async function toggleAiLabel(page, videoName) {
  * Faz até 2 tentativas completas (clicar + digitar + conferir) antes de
  * desistir e seguir sem legenda.
  */
+/**
+ * Espera o campo de legenda aparecer VISÍVEL.
+ *
+ * A procura antiga era uma olhada só, logo depois do "Avançar" — e a tela da
+ * legenda leva cerca de 1 s para montar. Em 21/09 ela rodou 180 a 270 ms depois
+ * do clique, quatro vezes, não achou nada e registrou "publicação seguirá sem
+ * legenda". Nas quatro a postagem falhou mais adiante por acaso; se o botão de
+ * compartilhar já estivesse pronto, o reel teria ido ao ar sem texto.
+ */
+async function esperarCampoDeLegenda(page, timeoutMs = 15_000) {
+  const limite = Date.now() + timeoutMs;
+  while (Date.now() < limite) {
+    const campo = await locateCaptionBox(page);
+    if ((await campo.count()) > 0 && await campo.isVisible().catch(() => false)) return campo;
+    await page.waitForTimeout(300);
+  }
+  return null;
+}
+
 async function typeCaption(page, videoName, caption) {
   // Normaliza SÓ o que é representação, nunca o conteúdo.
   //
@@ -604,12 +623,16 @@ async function typeCaption(page, videoName, caption) {
     message: `${caption.length} caracteres, começa com: "${caption.slice(0, 40)}"`,
   });
 
+  let noCampo = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const captionBox = await locateCaptionBox(page);
+    const captionBox = await esperarCampoDeLegenda(page);
 
-    if ((await captionBox.count()) === 0) {
-      await logEvent({ video: videoName, action: 'LEGENDA_NAO_ENCONTRADA', status: 'WARNING', message: 'Campo de legenda não localizado; publicação seguirá sem legenda.' });
-      return;
+    // Interrompe em vez de seguir. Post sem legenda não tem conserto — não
+    // dá para editar o texto de um reel pelo app depois —, enquanto a
+    // publicação que falha volta para a fila e sai certa na próxima.
+    if (!captionBox) {
+      await logEvent({ video: videoName, action: 'LEGENDA_NAO_ENCONTRADA', status: 'WARNING', message: 'Campo de legenda não apareceu em 15 s; publicação interrompida para não ir ao ar sem legenda.' });
+      throw new Error('O campo de legenda não apareceu. A publicação foi interrompida para não ir ao ar sem legenda — o vídeo volta para a fila.');
     }
 
     const focused = await ensureFocused(page, captionBox);
@@ -637,7 +660,7 @@ async function typeCaption(page, videoName, caption) {
     // Espera o texto assentar e confere se é MESMO o que foi mandado. A
     // checagem antiga só exigia "campo não vazio", então uma legenda errada ou
     // pela metade passava como preenchida.
-    let noCampo = '';
+    noCampo = '';
     for (let i = 0; i < 10; i++) {
       noCampo = normalizar(await captionBox.innerText().catch(() => ''));
       if (noCampo === esperado) break;
@@ -666,6 +689,12 @@ async function typeCaption(page, videoName, caption) {
   }
 
   await logEvent({ video: videoName, action: 'LEGENDA_FALHOU', status: 'WARNING', message: 'A legenda no campo não bateu com a enviada, nas duas tentativas.' });
+
+  // Divergência pequena (um espaço trocado) ainda publica, com o aviso acima.
+  // Campo VAZIO não: seria o mesmo post sem legenda do caso sem campo.
+  if (!noCampo) {
+    throw new Error('A legenda não entrou no campo nas duas tentativas. A publicação foi interrompida para não ir ao ar sem legenda — o vídeo volta para a fila.');
+  }
 }
 
 /**
