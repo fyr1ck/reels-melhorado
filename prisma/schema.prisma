@@ -98,6 +98,16 @@ model Account {
   /// Legenda usada quando o vídeo não tem a própria.
   fallbackCaption String?
 
+  /// Legenda rotativa: a cada N publicações o assistente reescreve a
+  /// `fallbackCaption` a partir de `captionSeed` — mesmo formato e idioma,
+  /// outro assunto. 0 desliga.
+  captionRotateEvery Int @default(0)
+  captionRotateCount Int @default(0)
+  /// Modelo de onde TODA legenda gerada é copiada. Fixo de propósito: gerar a
+  /// partir da última seria telefone sem fio, e em alguns lotes o formato já
+  /// não seria o do original.
+  captionSeed        String?
+
   /// Capa padrão DESTA conta. Cada perfil costuma ter identidade visual
   /// própria; uma capa única para a instalação inteira só serve quando há uma
   /// conta só. A resolução é: capa do vídeo > capa da conta > capa geral.

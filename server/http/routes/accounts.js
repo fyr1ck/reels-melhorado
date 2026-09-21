@@ -64,6 +64,18 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.fallbackCaption !== undefined) {
     data.fallbackCaption = v.str(b.fallbackCaption, { field: 'Legenda', min: 0, max: 2200 }) || null;
   }
+  // Legenda rotativa. Mexer no tamanho do lote reinicia a contagem: mudar de
+  // 20 para 5 com 12 publicados trocaria a legenda na publicação seguinte,
+  // sem que ninguém tivesse pedido.
+  if (b.captionRotateEvery !== undefined) {
+    data.captionRotateEvery = v.int(b.captionRotateEvery, { field: 'Trocar a legenda a cada', min: 0, max: 500 });
+    data.captionRotateCount = 0;
+  }
+  // Editar a legenda à mão redefine o modelo: é o texto novo que passa a ser a
+  // forma das próximas gerações.
+  if (b.fallbackCaption !== undefined && data.fallbackCaption) {
+    data.captionSeed = data.fallbackCaption;
+  }
   if (b.useDefaultCover !== undefined) {
     data.useDefaultCover = v.bool(b.useDefaultCover, { field: 'Usar capa da conta' });
   }

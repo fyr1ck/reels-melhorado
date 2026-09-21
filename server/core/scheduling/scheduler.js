@@ -7,6 +7,7 @@ import { aplicarLimites, chaveDoDia, esperaDaTentativa, tetoDoDia } from './limi
 import * as accounts from '../accounts/accounts.js';
 import * as logger from '../log.js';
 import { publishReel } from '../publishing/reel.js';
+import * as legenda from '../publishing/legenda.js';
 import { keepOnly, closeAll } from '../../playwright/browser.js';
 import { STORY_UNSUPPORTED_REASON } from '../publishing/story.js';
 import { moveTo } from '../../lib/files.js';
@@ -550,6 +551,10 @@ async function run(publication) {
           action: 'PUBLICACAO_CONCLUIDA', accountId: account.id,
           videoName: video.filename, attempt, durationMs,
         });
+        // Conta o vídeo para o lote da legenda rotativa. Nunca lança: o reel
+        // já está no ar, e uma falha na API do assistente não pode virar
+        // falha de publicação.
+        await legenda.registrarPublicacao(account.id);
         await notify.avisar({
           evento: notify.EVENTO.PUBLICACAO_OK,
           titulo: 'Publicado',

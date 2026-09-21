@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Save, AtSign, FileText, Shuffle, Image, Trash2, Sparkles } from 'lucide-react';
+import { Save, AtSign, FileText, Shuffle, Image, Trash2, Sparkles, RefreshCcw } from 'lucide-react';
 import { useMutation } from '../../hooks/useQuery.js';
 import { useToast } from '../../hooks/useToast.jsx';
 import { api } from '../../lib/api.js';
@@ -25,6 +25,7 @@ export default function AccountEditor({ account, onSaved }) {
       username: account.username,
       label: account.label ?? '',
       fallbackCaption: account.fallbackCaption ?? '',
+      captionRotateEvery: account.captionRotateEvery ?? 0,
       randomOrder: account.randomOrder,
       aiLabel: account.aiLabel ?? false,
     });
@@ -85,6 +86,27 @@ export default function AccountEditor({ account, onSaved }) {
           onChange={(e) => set('fallbackCaption', e.target.value)}
           placeholder="Deixe vazio para usar a legenda geral da instalação."
         />
+      </Field>
+
+      {/* Fica colado na legenda porque é a mesma legenda: o número abaixo diz
+          de quantos em quantos reels o texto de cima é reescrito. */}
+      <Field
+        className="mt"
+        label={<><RefreshCcw size={12} /> Trocar a legenda sozinha a cada</>}
+        hint="O assistente escreve uma legenda nova copiando a de cima — mesmo idioma, mesmas quebras de linha, mesmo formato, outro assunto. Os vídeos seguintes herdam ela. 0 deixa a legenda fixa. Precisa da chave da API em Assistente."
+      >
+        <div className="row">
+          <Input
+            type="number" min={0} max={500} style={{ width: 110 }}
+            value={form.captionRotateEvery}
+            onChange={(e) => set('captionRotateEvery', Number(e.target.value) || 0)}
+          />
+          <span className="faint" style={{ paddingTop: 10 }}>
+            {form.captionRotateEvery > 0
+              ? `publicações — ${account.captionRotateCount ?? 0} desde a última troca`
+              : 'publicações — 0 desliga'}
+          </span>
+        </div>
       </Field>
 
       {/* Logo abaixo da legenda porque é a ordem em que o Instagram mostra:

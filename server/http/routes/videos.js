@@ -13,6 +13,7 @@ import * as logger from '../../core/log.js';
 import { MEDIA, MEDIA_TYPES, VIDEO_STATUSES, VIDEO_STATUS } from '../../lib/enums.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as covers from '../../core/queue/covers.js';
+import * as legenda from '../../core/publishing/legenda.js';
 import * as duplicates from '../../core/queue/duplicates.js';
 import * as distribute from '../../core/queue/distribute.js';
 import * as classify from '../../core/niches/classify.js';
@@ -439,6 +440,9 @@ router.post('/:id/publish-now', wrap(async (req, res) => {
       action: 'PUBLICACAO_MANUAL_OK', accountId: video.accountId,
       videoName: video.filename, durationMs: result.durationMs,
     });
+    // O "Postar agora" conta para o lote igual ao agendador — senão publicar
+    // 20 pela fila do painel nunca trocaria a legenda.
+    await legenda.registrarPublicacao(video.accountId);
     res.json({ ok: true, durationMs: result.durationMs });
   } catch (err) {
     // Volta para PENDING, não para FAILED: foi um teste manual, e marcar como
