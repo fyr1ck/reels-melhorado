@@ -105,6 +105,7 @@ export default function Folders() {
                     <Badge tone={f.mode === 'MOVE' ? 'warn' : 'muted'}>{f.mode === 'MOVE' ? 'move' : 'copia'}</Badge>
                     {f.autoCaption && <Badge tone="brand">legenda auto</Badge>}
                     {!f.reachable && <Badge tone="danger">inacessível</Badge>}
+                    {!f.enabled && <Badge tone="danger">inativa</Badge>}
                   </div>
                   <code className="wf__path">{f.path}</code>
                   <div className="wf__stats">
@@ -120,9 +121,15 @@ export default function Folders() {
                 <div className="wf__actions">
                   <Button size="sm" icon={RefreshCw} onClick={() => varrer.run(f)} disabled={varrer.busy}>Varrer</Button>
                   <Button size="sm" icon={RotateCcw} onClick={() => reimportar(f)}>Reimportar</Button>
+                  {/* Verbo, não estado. O rótulo era "Ativa" numa pasta que JÁ
+                      estava ativa: quem queria ligar a pasta clicava nele e
+                      desligava — e a varredura só olha pasta ativa, então os
+                      vídeos simplesmente não apareciam na fila. O estado agora
+                      é a etiqueta "inativa" ali em cima. */}
                   <Button size="sm" icon={Power}
+                          title={f.enabled ? 'Parar de importar desta pasta' : 'Voltar a importar desta pasta'}
                           onClick={async () => { await api.patch(`/watch-folders/${f.id}`, { enabled: !f.enabled }); reload({ quiet: true }); }}>
-                    {f.enabled ? 'Ativa' : 'Inativa'}
+                    {f.enabled ? 'Desativar' : 'Ativar'}
                   </Button>
                   <Button size="sm" variant="danger" icon={Trash2}
                           onClick={async () => {
