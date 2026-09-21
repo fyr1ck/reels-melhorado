@@ -20,9 +20,21 @@ async function conferir(page, lista) {
   const achados = [];
   for (const sel of lista ?? []) {
     try {
-      const loc = page.locator(sel).first();
+      // Cada elemento, não só o primeiro. O Instagram mantém cópias
+      // escondidas do mesmo botão (menu recolhido, barra do celular), e o
+      // primeiro do DOM costuma ser uma delas: olhando só ele, o diagnóstico
+      // dizia "existe, invisível" enquanto a pessoa via o botão na tela — e
+      // quem clica, que também pega o primeiro, batia no escondido.
+      const loc = page.locator(sel);
       const n = await loc.count();
-      achados.push({ seletor: sel, existe: n > 0, visivel: n > 0 && await loc.isVisible() });
+      const visiveis = [];
+      for (let i = 0; i < n; i += 1) {
+        if (await loc.nth(i).isVisible().catch(() => false)) visiveis.push(i);
+      }
+      achados.push({
+        seletor: sel, existe: n > 0, total: n,
+        visivel: visiveis.length > 0, indicesVisiveis: visiveis,
+      });
     } catch {
       achados.push({ seletor: sel, existe: false, visivel: false, invalido: true });
     }
@@ -33,6 +45,21 @@ async function conferir(page, lista) {
 export async function inspecionar(accountId) {
   const context = await contextFor(accountId);
   const page = await context.newPage();
+
+  // Por que a rede entra no diagnostico: "botao nao encontrado" tambem e o
+  // sintoma de a pagina NUNCA ter montado. Em 20/09 o Instagram ficou parado
+  // no splash porque todo JS e CSS de static.cdninstagram.com voltava sem
+  // 'Access-Control-Allow-Origin' e com 'Cross-Origin-Resource-Policy:
+  // same-origin' -- o navegador bloqueava tudo. Sem estas tres listas, o
+  // diagnostico dizia "existe, invisivel" e a causa (a saida de rede) ficava
+  // invisivel junto.
+  const erros = [];
+  const falhas = [];
+  const respostas = [];
+  page.on('console', (m) => { if (m.type() === 'error') erros.push(m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => erros.push('pageerror: ' + String(e.message).slice(0, 200)));
+  page.on('requestfailed', (r) => falhas.push(r.url().slice(0, 120) + ' :: ' + (r.failure()?.errorText || '')));
+  page.on('response', (r) => { if (r.status() >= 400) respostas.push(r.status() + ' ' + r.url().slice(0, 120)); });
 
   try {
     await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -69,6 +96,9 @@ export async function inspecionar(accountId) {
 
     return {
       url,
+      erros: erros.slice(0, 12),
+      falhas: falhas.slice(0, 12),
+      respostasRuins: respostas.slice(0, 12),
       titulo: await page.title().catch(() => null),
       logado,
       seletores: {
