@@ -22,6 +22,9 @@ const ABAS = [
   { value: 'FAILED', label: 'Falhados' },
 ];
 
+/** Atalhos de seleção na barra da fila: marca os próximos N de uma vez. */
+const LOTES = [20, 30, 40];
+
 const TOM = { PENDING: 'muted', SCHEDULED: 'brand', PUBLISHING: 'warn', PUBLISHED: 'ok', FAILED: 'danger' };
 
 /* A cor da etiqueta de nicho segue a DECISÃO, não o nicho. Verde é "pode ir",
@@ -681,6 +684,20 @@ export default function Queue() {
                 o usuário nem viu. */}
             {selecao.size === filtrados.length ? 'Limpar seleção' : `Selecionar ${busca ? 'os encontrados' : 'todos'}`}
           </Button>
+          {/* Os próximos N da fila, na ordem em que vão ao ar. Marcar 20
+              caixinhas uma a uma para publicar em lote era justamente o
+              trabalho que o lote existia para tirar da frente. Só aparece o
+              que é menor que a lista — "40" numa fila de 25 é "todos". */}
+          {LOTES.filter((n) => n < filtrados.length).map((n) => (
+            <Button
+              key={n} size="sm" variant="ghost"
+              title={`Seleciona os ${n} primeiros da fila`}
+              disabled={!!lote}
+              onClick={() => setSelecao(new Set(filtrados.slice(0, n).map((x) => x.id)))}
+            >
+              {n}
+            </Button>
+          ))}
           <span className="faint">{selecao.size} selecionado(s)</span>
           <span style={{ flex: 1 }} />
           {publicaveis.length > 0 && (
