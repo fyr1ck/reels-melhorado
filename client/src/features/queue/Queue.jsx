@@ -51,6 +51,7 @@ export default function Queue() {
   const [rascunho, setRascunho] = useState('');
   const [selecao, setSelecao] = useState(new Set());
   const [publicando, setPublicando] = useState(null);
+  const [lote, setLote] = useState(null);
   const inputRef = useRef(null);
   const capaRef = useRef(null);
   const [capaAlvo, setCapaAlvo] = useState(null);
@@ -211,6 +212,52 @@ export default function Queue() {
     }
   }
 
+  /**
+   * Publica vários de uma vez — um por vez, sem clicar em cada cartão.
+   *
+   * Sequencial de propósito: o servidor tem UMA janela de navegador, e
+   * disparar tudo junto só empilharia as chamadas dentro do `comNavegador`
+   * com o painel sem saber em qual vídeo está.
+   *
+   * Para no primeiro erro. Quando a sessão cai ou a janela fecha, os
+   * seguintes falhariam igual — cada um reabrindo o navegador à toa. Os que
+   * já foram saem da lista, então clicar de novo continua de onde parou.
+   */
+  async function publicarTodos(itens) {
+    const ok = await confirm({
+      title: `Publicar ${itens.length} vídeo(s) agora?`,
+      description:
+        `Vão ao ar em @${account?.username} um depois do outro, IMEDIATAMENTE, fora do `
+        + 'agendamento. A janela do navegador abre em tempo real, leva alguns minutos e para '
+        + 'no primeiro erro. Deixe esta aba aberta até terminar.',
+      confirmLabel: `Publicar ${itens.length}`,
+      danger: true,
+    });
+    if (!ok) return;
+
+    let feitos = 0;
+    try {
+      for (const v of itens) {
+        setLote({ feitos, total: itens.length });
+        setPublicando(v.id);
+        try {
+          await api.post(`/videos/${v.id}/publish-now`);
+        } catch (err) {
+          toast.error(`Publicados ${feitos} de ${itens.length}. Parou em "${v.filename}": ${err.message}`);
+          return;
+        }
+        feitos += 1;
+        await reload({ quiet: true });
+      }
+      setSelecao(new Set());
+      toast.success(`${feitos} vídeo(s) publicado(s).`);
+    } finally {
+      setPublicando(null);
+      setLote(null);
+      await reload({ quiet: true });
+    }
+  }
+
   async function removerSelecionados() {
     const ok = await confirm({
       title: `Remover ${selecao.size} vídeo(s)`,
@@ -311,6 +358,12 @@ export default function Queue() {
     || !!(settings?.useDefaultCover && settings?.defaultCoverPath);
 
   const lista = ordem ?? visiveis;
+
+  // O que o botão de lote vai publicar: a seleção, se houver, senão a aba
+  // inteira (não só os 60 renderizados). Publicado e falhado ficam de fora,
+  // como no botão de cada cartão.
+  const publicaveis = (selecao.size ? filtrados.filter((v) => selecao.has(v.id)) : filtrados)
+    .filter((v) => v.status === 'PENDING' || v.status === 'SCHEDULED');
 
   // Arrastar só faz sentido na fila de espera: a ordem de quem já publicou não
   // muda nada, e com busca ativa a posição vista não é a posição real.
@@ -630,7 +683,23 @@ export default function Queue() {
           </Button>
           <span className="faint">{selecao.size} selecionado(s)</span>
           <span style={{ flex: 1 }} />
-          <Button size="sm" variant="danger" icon={Trash2} disabled={!selecao.size} onClick={removerSelecionados}>
+          {publicaveis.length > 0 && (
+            <Button
+              size="sm" variant="ok" icon={Zap}
+              loading={!!lote}
+              title="Publica um atrás do outro, sem parar entre eles"
+              onClick={() => publicarTodos(publicaveis)}
+            >
+              {lote
+                ? `Postando ${lote.feitos + 1} de ${lote.total}…`
+                : `Postar ${selecao.size ? `${publicaveis.length} selecionado(s)` : `todos (${publicaveis.length})`}`}
+            </Button>
+          )}
+          <Button
+            size="sm" variant="danger" icon={Trash2}
+            disabled={!selecao.size || !!lote}
+            onClick={removerSelecionados}
+          >
             Remover selecionados
           </Button>
         </div>
@@ -760,6 +829,7 @@ export default function Queue() {
                     size="sm" variant="ok" icon={Zap} title="Publica imediatamente, fora do agendamento"
                     className="vid__now"
                     loading={publicando === v.id}
+                    disabled={!!lote && publicando !== v.id}
                     onClick={() => publicarAgora(v)}
                   >
                     Postar agora
